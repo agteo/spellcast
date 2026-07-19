@@ -4,7 +4,7 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 
 **Repo:** https://github.com/agteo/spellcast (public)  
 **Last updated:** 2026-07-19  
-**Current phase:** 4 — Remaining gestures + unlock panel (finishing) → next: 5 — Ghost replay
+**Current phase:** 5 — Ghost replay (finishing) → next: 6 — Custom characters
 
 ## Status legend
 
@@ -49,7 +49,9 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 
 ### Phase 5 — Ghost replay
 
-- [ ] `src/replay/ghost.js` on second character
+- [x] `src/replay/ghost.js` on second translucent character
+- [x] Save take (in-memory) + Ghost toggle UI
+- [ ] Confirm in Chrome: Record → Save take → Ghost loops beside live
 
 ### Phase 6 — Custom characters
 
@@ -80,6 +82,7 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 - Spellbot re-skin: per-material PBR overrides in `characters.js` (teal emissive core, dark slate shell, violet accents) applied at load in `scene.js`; violet rim light + grid.
 - Phase 4 gestures remain deterministic: dab uses face-to-elbow + opposite straight arm; arms-V uses both wrists above the head; finger gun arms on thumb-up and fires on thumb drop.
 - Unlock discovery is session-only; no identity, storage, or backend.
+- Ghost replay: Save take snapshots `litert-mocap/1` frames in memory; Ghost loads a translucent offset clone of the take's character and loops bone rotations.
 
 ## Blockers
 

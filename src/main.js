@@ -26,6 +26,7 @@ import { startWebcam, WebcamError } from './camera.js';
 import { Overlay } from './overlay.js';
 import { Hud } from './hud.js';
 import { SessionRecorder } from './exporter.js';
+import { GhostPlayer } from './replay/ghost.js';
 import { setStatus, hideStatus, showError, toast } from './ui.js';
 
 const els = {
@@ -36,6 +37,8 @@ const els = {
   characterSelect: document.getElementById('character-select'),
   mirrorToggle: document.getElementById('mirror-toggle'),
   recordBtn: document.getElementById('record-btn'),
+  saveTakeBtn: document.getElementById('save-take-btn'),
+  ghostToggle: document.getElementById('ghost-toggle'),
   exportJsonBtn: document.getElementById('export-json-btn'),
   exportBvhBtn: document.getElementById('export-bvh-btn'),
   recBadge: document.getElementById('rec-badge'),
@@ -49,6 +52,8 @@ const state = {
   effects: null,
   stage: null,
   retargeter: null,
+  ghostPlayer: null,
+  savedTake: null,
   characterKey: DEFAULT_CHARACTER,
   mirror: true,
   latest: null,          // { screen, worldExtended, hands, score, receivedAt }
@@ -253,6 +258,8 @@ function startRenderLoop() {
       els.recFrames.textContent = recorder.frameCount;
     }
 
+    state.ghostPlayer?.update(dt);
+
     if (state.effects) {
       state.effects.update(dt);
       state.effects.render();
@@ -304,6 +311,10 @@ function setupControls() {
     if (recorder.recording) stopRecording();
     try {
       await loadCharacter(key);
+      // Ghost stays on the take's original character; rebuild if still enabled.
+      if (els.ghostToggle.checked && state.savedTake) {
+        await enableGhost();
+      }
     } catch (err) {
       console.error(err);
       toast(`Could not load character: ${err.message}`, 5000);
@@ -327,6 +338,20 @@ function setupControls() {
     if (recorder.recording) stopRecording();
     else startRecording();
   });
+  els.saveTakeBtn.addEventListener('click', () => saveTake());
+  els.ghostToggle.addEventListener('change', async () => {
+    if (els.ghostToggle.checked) {
+      try {
+        await enableGhost();
+      } catch (err) {
+        console.error(err);
+        els.ghostToggle.checked = false;
+        toast(`Ghost failed: ${err.message}`, 5000);
+      }
+    } else {
+      disableGhost();
+    }
+  });
   els.exportJsonBtn.addEventListener('click', () => recorder.exportJSON());
   els.exportBvhBtn.addEventListener('click', () => recorder.exportBVH());
 }
@@ -338,6 +363,7 @@ function startRecording() {
   els.recBadge.classList.remove('hidden');
   els.exportJsonBtn.disabled = true;
   els.exportBvhBtn.disabled = true;
+  els.saveTakeBtn.disabled = true;
 }
 
 function stopRecording() {
@@ -348,7 +374,41 @@ function stopRecording() {
   const has = recorder.frameCount > 0;
   els.exportJsonBtn.disabled = !has;
   els.exportBvhBtn.disabled = !has;
-  if (has) toast(`Recorded ${recorder.frameCount} frames — ready to export.`);
+  els.saveTakeBtn.disabled = !has;
+  if (has) toast(`Recorded ${recorder.frameCount} frames — save a take or export.`);
+}
+
+function saveTake() {
+  const take = recorder.saveTake();
+  if (!take) {
+    toast('Nothing to save — record a take first.', 3000);
+    return;
+  }
+  state.savedTake = take;
+  els.ghostToggle.disabled = false;
+  toast(`Take saved (${take.frameCount} frames) — toggle Ghost to replay.`, 3500);
+}
+
+async function enableGhost() {
+  if (!state.savedTake) {
+    els.ghostToggle.checked = false;
+    toast('Save a take before enabling Ghost.', 3000);
+    return;
+  }
+  const key = state.savedTake.character;
+  const config = CHARACTERS[key];
+  if (!config) throw new Error(`Unknown character for take: ${key}`);
+
+  const root = await state.stage.loadGhost(config);
+  state.ghostPlayer = new GhostPlayer(root, state.savedTake);
+  state.ghostPlayer.play();
+  toast(`Ghost replaying ${state.savedTake.frameCount} frames`, 2500);
+}
+
+function disableGhost() {
+  state.ghostPlayer?.stop();
+  state.ghostPlayer = null;
+  state.stage?.removeGhost();
 }
 
 function applyMirrorClass() {

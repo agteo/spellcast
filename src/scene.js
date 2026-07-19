@@ -53,6 +53,7 @@ export class Stage {
     this.scene.add(shadowPlane);
 
     this.character = null;
+    this.ghost = null;
     this.loader = new GLTFLoader();
 
     this.#resize();
@@ -116,16 +117,77 @@ export class Stage {
   }
 
   removeCharacter() {
-    if (!this.character) return;
-    this.scene.remove(this.character);
-    this.character.traverse((n) => {
+    this.#disposeObject(this.character);
+    this.character = null;
+  }
+
+  /**
+   * Load a second translucent character for ghost replay, offset to the side
+   * so it sits beside the live performer without replacing them.
+   */
+  async loadGhost(config, { offsetX = -0.95 } = {}) {
+    const gltf = await this.loader.loadAsync(config.url);
+    const root = gltf.scene;
+
+    root.traverse((n) => {
+      if (n.isMesh) {
+        n.castShadow = false;
+        n.receiveShadow = false;
+        n.frustumCulled = false;
+        this.#makeGhostMaterial(n);
+      }
+    });
+
+    const box = new THREE.Box3().setFromObject(root);
+    const size = box.getSize(new THREE.Vector3());
+    const scale = config.targetHeight / (size.y || 1);
+    root.scale.setScalar(scale);
+    box.setFromObject(root);
+    const center = box.getCenter(new THREE.Vector3());
+    root.position.x -= center.x;
+    root.position.z -= center.z;
+    root.position.y -= box.min.y;
+    root.position.x += offsetX;
+    root.updateWorldMatrix(true, true);
+
+    this.removeGhost();
+    this.ghost = root;
+    this.scene.add(root);
+    return root;
+  }
+
+  removeGhost() {
+    this.#disposeObject(this.ghost);
+    this.ghost = null;
+  }
+
+  #makeGhostMaterial(mesh) {
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    const ghosted = mats.map((m) => {
+      const mat = m.clone();
+      mat.transparent = true;
+      mat.opacity = 0.38;
+      mat.depthWrite = false;
+      if (mat.color) mat.color.lerp(new THREE.Color(0x67e8f9), 0.35);
+      if (mat.emissive) {
+        mat.emissive.set(0x22d3ee);
+        mat.emissiveIntensity = Math.max(mat.emissiveIntensity || 0, 0.25);
+      }
+      return mat;
+    });
+    mesh.material = ghosted.length === 1 ? ghosted[0] : ghosted;
+  }
+
+  #disposeObject(root) {
+    if (!root) return;
+    this.scene.remove(root);
+    root.traverse((n) => {
       if (n.isMesh) {
         n.geometry?.dispose();
         const mats = Array.isArray(n.material) ? n.material : [n.material];
         for (const m of mats) m?.dispose();
       }
     });
-    this.character = null;
   }
 
   render() {

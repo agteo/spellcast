@@ -15,7 +15,7 @@ Use Chrome (or another WebGPU browser) for the fast path. The app detects missin
 
 ## Status
 
-**Phase 4 — Launch gestures:** finger heart, Strange circle, dab, arms-V, and finger gun now unlock their effects and light up the session discovery panel.
+**Phase 5 — Ghost replay:** Record → Save take → toggle Ghost to loop a translucent twin beside you.
 
 See [SPEC.md](./SPEC.md) for the product contract and [PROGRESS.md](./PROGRESS.md) for the phased build tracker.
 

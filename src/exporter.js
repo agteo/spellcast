@@ -64,16 +64,24 @@ export class SessionRecorder {
     return this.frames.length;
   }
 
-  exportJSON() {
-    const data = {
+  /** Snapshot the current recording as an in-memory take (same schema as JSON export). */
+  saveTake() {
+    if (!this.frames.length || !this.boneList) return null;
+    return {
       format: 'litert-mocap/1',
       character: this.characterName,
       recordedAt: new Date().toISOString(),
       landmarkNames: 'MediaPipe BlazePose 33-point order',
       bones: this.boneList.map((b) => b.name),
       frameCount: this.frames.length,
-      frames: this.frames,
+      // Structured clone so later recording doesn't mutate the saved take.
+      frames: structuredClone(this.frames),
     };
+  }
+
+  exportJSON() {
+    const data = this.saveTake();
+    if (!data) return;
     download(
       new Blob([JSON.stringify(data)], { type: 'application/json' }),
       `mocap-${stamp()}.json`
