@@ -74,6 +74,8 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 - Hand ROIs from pose wrist/index/pinky; CPU alternates one hand/frame.
 - Finger heart: tip proximity + curled other fingers; hearts in Three.js stage.
 - Strange circle: index+middle tips together & extended for whole trail; Kåsa fit; ≥300° sweep; world-anchored ring + UnrealBloomPass; ~2.8s cooldown.
+- Torso fix: pelvis/chest basis now gated on all four torso landmarks + minimum spine length, relaxing to bind pose otherwise — face-only framing no longer pitches the character face-down.
+- Spellbot re-skin: per-material PBR overrides in `characters.js` (teal emissive core, dark slate shell, violet accents) applied at load in `scene.js`; violet rim light + grid.
 
 ## Blockers
 

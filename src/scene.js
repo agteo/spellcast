@@ -34,13 +34,13 @@ export class Stage {
     key.shadow.camera.left = key.shadow.camera.bottom = -3;
     key.shadow.camera.right = key.shadow.camera.top = 3;
     this.scene.add(key);
-    const rim = new THREE.DirectionalLight(0x2dd4bf, 1.1);
+    const rim = new THREE.DirectionalLight(0x8b5cf6, 1.3);
     rim.position.set(-3, 2, -2);
     this.scene.add(rim);
     this.scene.add(new THREE.AmbientLight(0xffffff, 0.55));
 
     // Floor: subtle grid + shadow catcher.
-    const grid = new THREE.GridHelper(20, 40, 0x2dd4bf, 0x1d2430);
+    const grid = new THREE.GridHelper(20, 40, 0x8b5cf6, 0x1d2430);
     grid.material.opacity = 0.28;
     grid.material.transparent = true;
     this.scene.add(grid);
@@ -79,6 +79,7 @@ export class Stage {
       if (n.isMesh) {
         n.castShadow = true;
         n.frustumCulled = false; // skinned meshes move; don't let culling clip them
+        if (config.materials) this.#applyMaterialOverrides(n, config.materials);
       }
     });
 
@@ -98,6 +99,20 @@ export class Stage {
     this.character = root;
     this.scene.add(root);
     return root;
+  }
+
+  /** Re-tint a mesh's materials from a { materialName: overrides } config map. */
+  #applyMaterialOverrides(mesh, overrides) {
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const m of mats) {
+      const o = m && overrides[m.name];
+      if (!o) continue;
+      if (o.color !== undefined) m.color.set(o.color);
+      if (o.emissive !== undefined && m.emissive) m.emissive.set(o.emissive);
+      if (o.emissiveIntensity !== undefined) m.emissiveIntensity = o.emissiveIntensity;
+      if (o.roughness !== undefined) m.roughness = o.roughness;
+      if (o.metalness !== undefined) m.metalness = o.metalness;
+    }
   }
 
   removeCharacter() {

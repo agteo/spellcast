@@ -291,12 +291,35 @@ export class Retargeter {
       }
       if (d.type === 'basis') {
         // --- 4. Full-basis joint (pelvis / chest).
-        if (vis[d.left] < VISIBILITY_THRESHOLD || vis[d.right] < VISIBILITY_THRESHOLD) continue;
+        // The basis needs BOTH the hip line and the shoulder line to be
+        // trustworthy: `up` is NECK−HIP_CENTER, so extrapolated out-of-frame
+        // hips poison the pelvis AND chest even when shoulders are visible
+        // (face-only framing pitched the whole character face-down). Gate on
+        // all four torso landmarks and RELAX to bind pose instead of
+        // freezing, so a bad frame can't lock the torso in a bent-over pose.
+        const torsoVisible =
+          vis[d.left] >= VISIBILITY_THRESHOLD &&
+          vis[d.right] >= VISIBILITY_THRESHOLD &&
+          vis[LM.LEFT_HIP] >= VISIBILITY_THRESHOLD &&
+          vis[LM.RIGHT_HIP] >= VISIBILITY_THRESHOLD &&
+          vis[LM.LEFT_SHOULDER] >= VISIBILITY_THRESHOLD &&
+          vis[LM.RIGHT_SHOULDER] >= VISIBILITY_THRESHOLD;
+        if (!torsoVisible) {
+          d.bone.quaternion.slerp(d.restQuat, boneRelaxAlpha);
+          continue;
+        }
 
         // Build the live body basis: left axis from the hip/shoulder line,
         // up axis from the spine, forward = left × up (right-handed).
         const left = pts[d.left].clone().sub(pts[d.right]).normalize();
-        const up = pts[LM.NECK].clone().sub(pts[LM.HIP_CENTER]).normalize();
+        const spine = pts[LM.NECK].clone().sub(pts[LM.HIP_CENTER]);
+        // Degenerate spine (hips guessed right under the shoulders) → the up
+        // axis is noise; ease back rather than aim the torso somewhere random.
+        if (spine.length() < 0.18) {
+          d.bone.quaternion.slerp(d.restQuat, boneRelaxAlpha);
+          continue;
+        }
+        const up = spine.normalize();
         const forward = new THREE.Vector3().crossVectors(left, up).normalize();
         if (forward.lengthSq() < 1e-8) continue;
         // Re-orthogonalize left so the basis is exact.
@@ -318,6 +341,8 @@ export class Retargeter {
         // Landmark momentarily unreliable → drift gently toward bind pose
         // (slow enough that a two-frame dip during fast motion is invisible,
         // but an elbow that leaves the frame doesn't stay frozen forever).
+        // The spine segment reads the virtual HIP_CENTER, whose visibility is
+        // the min of both hips — so face-only framing correctly relaxes it.
         if (vis[d.from] < VISIBILITY_THRESHOLD || vis[d.to] < VISIBILITY_THRESHOLD) {
           d.bone.quaternion.slerp(d.restQuat, boneRelaxAlpha);
           continue;

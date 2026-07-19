@@ -21,13 +21,23 @@
 //   positionBones  — bones driven by landmark POSITION rather than rotation.
 //                    Needed for IK-style rigs (RobotExpressive parents its
 //                    feet to the armature root, not to the legs).
+//   materials      — optional per-material-name PBR overrides applied at
+//                    load (color / emissive / roughness / metalness), used
+//                    to give stock glbs a Spellcast look.
 // ---------------------------------------------------------------------------
 
 export const CHARACTERS = {
   robot: {
-    label: 'Robot (Three.js RobotExpressive)',
+    label: 'Spellbot (robot rig)',
     url: '/characters/RobotExpressive.glb',
     targetHeight: 1.7,
+    // Spellcast re-skin of the stock RobotExpressive palette (Grey/Main/Black):
+    // dark arcane shell with a glowing teal core — reads well under bloom.
+    materials: {
+      Main: { color: 0x0f766e, emissive: 0x14b8a6, emissiveIntensity: 0.35, roughness: 0.35, metalness: 0.55 },
+      Grey: { color: 0x1e293b, roughness: 0.5, metalness: 0.7 },
+      Black: { color: 0x0b1020, emissive: 0x7c3aed, emissiveIntensity: 0.5 },
+    },
     pelvis: { bone: 'Hips' },
     chest: { bone: 'Torso' },
     segments: [
