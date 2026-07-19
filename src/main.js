@@ -21,6 +21,7 @@ import { UnlockTracker } from './gestures/unlocks.js';
 import { EffectsEngine } from './effects/engine.js';
 import { Retargeter } from './retarget/retarget.js';
 import { CHARACTERS, DEFAULT_CHARACTER } from './retarget/characters.js';
+import { tryBuildMixamoConfig } from './retarget/mixamoMap.js';
 import { Stage } from './scene.js';
 import { startWebcam, WebcamError } from './camera.js';
 import { Overlay } from './overlay.js';
@@ -41,6 +42,8 @@ const els = {
   ghostToggle: document.getElementById('ghost-toggle'),
   exportJsonBtn: document.getElementById('export-json-btn'),
   exportBvhBtn: document.getElementById('export-bvh-btn'),
+  glbInput: document.getElementById('glb-input'),
+  dropOverlay: document.getElementById('drop-overlay'),
   recBadge: document.getElementById('rec-badge'),
   recFrames: document.getElementById('rec-frames'),
 };
@@ -54,6 +57,7 @@ const state = {
   retargeter: null,
   ghostPlayer: null,
   savedTake: null,
+  customObjectUrls: [],
   characterKey: DEFAULT_CHARACTER,
   mirror: true,
   latest: null,          // { screen, worldExtended, hands, score, receivedAt }
@@ -354,6 +358,107 @@ function setupControls() {
   });
   els.exportJsonBtn.addEventListener('click', () => recorder.exportJSON());
   els.exportBvhBtn.addEventListener('click', () => recorder.exportBVH());
+
+  els.glbInput?.addEventListener('change', async () => {
+    const file = els.glbInput.files?.[0];
+    if (file) await importCustomGlb(file);
+    els.glbInput.value = '';
+  });
+  setupGlbDropTarget();
+}
+
+function setupGlbDropTarget() {
+  const overlay = els.dropOverlay;
+  let depth = 0;
+  const show = () => {
+    depth += 1;
+    overlay?.classList.remove('hidden');
+  };
+  const hide = () => {
+    depth = Math.max(0, depth - 1);
+    if (depth === 0) overlay?.classList.add('hidden');
+  };
+
+  window.addEventListener('dragenter', (e) => {
+    if (!hasGlb(e)) return;
+    e.preventDefault();
+    show();
+  });
+  window.addEventListener('dragover', (e) => {
+    if (!hasGlb(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  });
+  window.addEventListener('dragleave', (e) => {
+    if (!hasGlb(e) && depth === 0) return;
+    e.preventDefault();
+    hide();
+  });
+  window.addEventListener('drop', async (e) => {
+    depth = 0;
+    overlay?.classList.add('hidden');
+    const file = [...(e.dataTransfer?.files || [])].find((f) =>
+      f.name.toLowerCase().endsWith('.glb')
+    );
+    if (!file) return;
+    e.preventDefault();
+    await importCustomGlb(file);
+  });
+}
+
+function hasGlb(e) {
+  const items = e.dataTransfer?.items;
+  if (!items?.length) return true; // be permissive on enter
+  return [...items].some((it) =>
+    it.kind === 'file' && (it.type.includes('gltf') || true)
+  );
+}
+
+async function importCustomGlb(file) {
+  if (state.busy) return;
+  if (!file.name.toLowerCase().endsWith('.glb')) {
+    toast('Please drop a .glb file (Mixamo-style rig).', 4000);
+    return;
+  }
+
+  state.busy = true;
+  const objectUrl = URL.createObjectURL(file);
+  state.customObjectUrls.push(objectUrl);
+
+  try {
+    toast(`Inspecting ${file.name}…`, 2500);
+    const sceneRoot = await state.stage.loadGlbScene(objectUrl);
+    const label = file.name.replace(/\.glb$/i, '') || 'Custom character';
+    const result = tryBuildMixamoConfig(sceneRoot, { label, url: objectUrl });
+
+    if (!result.ok) {
+      toast(
+        `Bone names don't match Mixamo — add a config entry in characters.js. Missing: ${result.missing.join(', ')}`,
+        8000,
+      );
+      return;
+    }
+
+    const key = `custom_${Date.now().toString(36)}`;
+    CHARACTERS[key] = result.config;
+    addCharacterOption(key, result.config.label);
+    if (recorder.recording) stopRecording();
+    await loadCharacter(key);
+    els.characterSelect.value = key;
+    toast(`Loaded ${label} (Mixamo map OK)`, 3500);
+  } catch (err) {
+    console.error(err);
+    toast(`Could not load .glb: ${err.message}`, 5000);
+  } finally {
+    state.busy = false;
+  }
+}
+
+function addCharacterOption(key, label) {
+  const opt = document.createElement('option');
+  opt.value = key;
+  opt.textContent = label;
+  els.characterSelect.appendChild(opt);
 }
 
 function startRecording() {

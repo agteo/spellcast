@@ -40,6 +40,10 @@
           <span>Ghost</span>
           <input type="checkbox" id="ghost-toggle" disabled />
         </label>
+        <label class="control file">
+          <span>Custom .glb</span>
+          <input type="file" id="glb-input" accept=".glb,model/gltf-binary" />
+        </label>
         <button id="export-json-btn" disabled>Export JSON</button>
         <button id="export-bvh-btn" disabled>Export BVH</button>
       </div>
@@ -88,6 +92,9 @@
     </div>
 
     <div id="toast" class="hidden"></div>
+    <div id="drop-overlay" class="hidden" aria-hidden="true">
+      <div class="drop-card">Drop a Mixamo-style .glb to load</div>
+    </div>
 
     <script type="module" src="/src/main.js"></script>
   </body>

@@ -307,6 +307,34 @@ button.recording {
 }
 #toast.hidden { opacity: 0; pointer-events: none; }
 
+.control.file input[type="file"] {
+  max-width: 148px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+#drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(11, 14, 19, 0.72);
+  border: 2px dashed #8b5cf6;
+  pointer-events: none;
+}
+#drop-overlay:not(.hidden) { display: flex; }
+.drop-card {
+  padding: 22px 28px;
+  border-radius: 14px;
+  border: 1px solid rgba(139, 92, 246, 0.5);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+}
+
 .hidden { display: none !important; }
 #status-layer.hidden { display: flex !important; }
 #toast.hidden { display: block !important; }

@@ -69,6 +69,15 @@ export class Stage {
   }
 
   /**
+   * Load a .glb into memory without attaching it to the stage (for bone inspection).
+   * @param {string} url
+   */
+  async loadGlbScene(url) {
+    const gltf = await this.loader.loadAsync(url);
+    return gltf.scene;
+  }
+
+  /**
    * Load a rigged character. Returns the root Object3D, already normalized:
    * uniformly scaled to config.targetHeight and stood on the floor at origin.
    */

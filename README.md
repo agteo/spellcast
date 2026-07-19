@@ -15,7 +15,7 @@ Use Chrome (or another WebGPU browser) for the fast path. The app detects missin
 
 ## Status
 
-**Phase 5 — Ghost replay:** Record → Save take → toggle Ghost to loop a translucent twin beside you.
+**Phase 6 — Custom characters:** drag-and-drop a Mixamo-style `.glb` to auto-map bones (or get a clear toast if names don't match).
 
 See [SPEC.md](./SPEC.md) for the product contract and [PROGRESS.md](./PROGRESS.md) for the phased build tracker.
 

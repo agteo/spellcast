@@ -3,8 +3,10 @@
 // retargeting math in retarget.js stays 100% character-agnostic.
 //
 // To add a new rigged .glb (Mixamo, Ready Player Me, ...):
-//   1. Drop the file in public/characters/
-//   2. Add an entry below mapping its bone names to landmark segments.
+//   A. Drop the .glb onto the page (or use Custom .glb) — Mixamo bone names
+//      are auto-detected at runtime (see mixamoMap.js).
+//   B. Or permanently: drop the file in public/characters/ and add an entry
+//      below mapping its bone names to landmark segments.
 // That's the whole job — no retargeting code changes.
 //
 // Config format:
