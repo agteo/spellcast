@@ -15,7 +15,7 @@ Use Chrome (or another WebGPU browser) for the fast path. The app detects missin
 
 ## Status
 
-**Phase 0 — Bootstrap:** base LiteRT.js-Mocap tree vendored; WebGPU ↔ CPU switch present in the app.
+**Phase 1 — Hand tracking:** pose-derived hand ROIs + LiteRT hand landmarks on overlay; HUD shows pose and hands latency.
 
 See [SPEC.md](./SPEC.md) for the product contract and [PROGRESS.md](./PROGRESS.md) for the phased build tracker.
 

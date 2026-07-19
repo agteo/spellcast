@@ -4,7 +4,7 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 
 **Repo:** https://github.com/agteo/spellcast (public)  
 **Last updated:** 2026-07-19  
-**Current phase:** 1 — Hand tracking
+**Current phase:** 1 — Hand tracking (finishing) → next: 2 — First gesture E2E
 
 ## Status legend
 
@@ -23,9 +23,10 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 
 ### Phase 1 — Hand tracking
 
-- [ ] `src/hands/detector.js` + `landmarks.js`
-- [ ] ROI crop from pose wrists; up to 2 hands/frame
-- [ ] Overlay hand skeleton; HUD second INFER row
+- [x] `src/hands/detector.js` + `landmarks.js`
+- [x] ROI crop from pose wrists; up to 2 hands/frame (1 hand/frame on CPU)
+- [x] Overlay hand skeleton; HUD second INFER row (POSE + HANDS)
+- [ ] Confirm in Chrome: both hands draw; HUD shows pose + hands ms
 
 ### Phase 2 — First gesture E2E
 
@@ -70,7 +71,8 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 
 - Vendored from https://github.com/andrisgauracs/LiteRT.js-Mocap (see ATTRIBUTION.md).
 - Package name set to `spellcast` (`0.1.0`); base scripts (`dev` / `build` / Wasm copy) unchanged.
-- Shipped BlazePose `.tflite` and character `.glb` files are intentionally tracked.
+- Shipped BlazePose + Hand Landmark `.tflite` and character `.glb` files are intentionally tracked.
+- Hand ROIs from pose wrist/index/pinky (no palm detector); CPU backend alternates one hand per frame.
 
 ## Blockers
 

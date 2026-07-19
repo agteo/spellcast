@@ -6,10 +6,12 @@ export class Hud {
   constructor() {
     this.fpsEl = document.getElementById('hud-fps');
     this.inferEl = document.getElementById('hud-infer');
+    this.inferHandsEl = document.getElementById('hud-infer-hands');
     this.backendEl = document.getElementById('hud-backend');
     this.trackEl = document.getElementById('hud-track');
     this.fps = 0;
     this.inferMs = 0;
+    this.inferHandsMs = 0;
     this.lastDraw = 0;
     this.trackMode = '–';
   }
@@ -23,6 +25,10 @@ export class Hud {
 
   tickInference(ms) {
     this.inferMs = this.inferMs ? this.inferMs * 0.85 + ms * 0.15 : ms;
+  }
+
+  tickHandsInference(ms) {
+    this.inferHandsMs = this.inferHandsMs ? this.inferHandsMs * 0.85 + ms * 0.15 : ms;
   }
 
   setBackend(label) {
@@ -42,5 +48,8 @@ export class Hud {
     this.lastDraw = now;
     this.fpsEl.textContent = this.fps ? this.fps.toFixed(0) : '–';
     this.inferEl.textContent = this.inferMs ? `${this.inferMs.toFixed(1)} ms` : '–';
+    if (this.inferHandsEl) {
+      this.inferHandsEl.textContent = this.inferHandsMs ? `${this.inferHandsMs.toFixed(1)} ms` : '–';
+    }
   }
 }

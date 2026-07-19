@@ -5,6 +5,7 @@ Spellcast is based on [LiteRT.js-Mocap](https://github.com/andrisgauracs/LiteRT.
 ## Upstream credits (from LiteRT.js-Mocap)
 
 - Pose model: [MediaPipe BlazePose](https://developers.google.com/mediapipe) (Google, Apache-2.0)
+- Hand model: [MediaPipe Hand Landmark (full)](https://developers.google.com/edge/mediapipe/solutions/vision/hand_landmarker) (Google, Apache-2.0)
 - Runtime: [LiteRT.js](https://developers.google.com/edge/litert/web) (`@litertjs/core`, Apache-2.0)
 - Characters: [three.js examples](https://github.com/mrdoob/three.js) (MIT); RobotExpressive originally by [Tomás Laulhé](https://www.patreon.com/quaternius), CC0
 - Smoothing: the [One Euro filter](https://gery.casiez.net/1euro/) (Casiez, Roussel, Vogel)

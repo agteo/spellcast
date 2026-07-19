@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // App orchestration:
-//   webcam → PoseDetector (LiteRT.js) → landmark smoothing → Retargeter →
-//   Three.js character, with overlay / HUD / recorder alongside.
+//   webcam → PoseDetector (LiteRT.js) → HandDetector → landmark smoothing →
+//   Retargeter → Three.js character, with overlay / HUD / recorder alongside.
 //
 // Two loops run concurrently:
 //   - INFERENCE loop: as fast as the model allows (awaits each result, so
@@ -14,6 +14,8 @@
 import { PoseDetector } from './pose/detector.js';
 import { LandmarkSmoother } from './pose/smoothing.js';
 import { mirrorLandmarks, extendLandmarks, NUM_LANDMARKS } from './pose/landmarks.js';
+import { HandDetector } from './hands/detector.js';
+import { NUM_HAND_LANDMARKS } from './hands/landmarks.js';
 import { Retargeter } from './retarget/retarget.js';
 import { CHARACTERS, DEFAULT_CHARACTER } from './retarget/characters.js';
 import { Stage } from './scene.js';
@@ -39,11 +41,12 @@ const els = {
 
 const state = {
   detector: null,
+  hands: null,
   stage: null,
   retargeter: null,
   characterKey: DEFAULT_CHARACTER,
   mirror: true,
-  latest: null,          // { screen, worldExtended, score, receivedAt }
+  latest: null,          // { screen, worldExtended, hands, score, receivedAt }
   lastRenderTime: 0,
   busy: false,           // guards backend/character switches
 };
@@ -56,6 +59,8 @@ window.__mocap.recorder = recorder;
 // Separate smoothers for the 2D overlay points and the 3D world points.
 const screenSmoother = new LandmarkSmoother(NUM_LANDMARKS, { minCutoff: 1.5, beta: 0.06 });
 const worldSmoother = new LandmarkSmoother(NUM_LANDMARKS, { minCutoff: 1.0, beta: 0.05 });
+const leftHandSmoother = new LandmarkSmoother(NUM_HAND_LANDMARKS, { minCutoff: 1.8, beta: 0.08 });
+const rightHandSmoother = new LandmarkSmoother(NUM_HAND_LANDMARKS, { minCutoff: 1.8, beta: 0.08 });
 
 boot().catch((err) => {
   console.error(err);
@@ -80,6 +85,7 @@ async function boot() {
   // 2. Boot the LiteRT runtime + pick the best available backend.
   setStatus('Loading LiteRT.js runtime…', 'Initializing Wasm modules');
   state.detector = new PoseDetector();
+  state.hands = new HandDetector();
   await state.detector.init();
 
   let backend = 'webgpu';
@@ -89,7 +95,7 @@ async function boot() {
     toast('WebGPU is not available in this browser — running on CPU (XNNPACK/Wasm).', 6000);
   }
 
-  // 3. Compile the pose model and load the character in parallel.
+  // 3. Compile pose + hand models and load the character in parallel.
   state.stage = new Stage(els.sceneWrap);
   const compilePromise = compileBackend(backend, true);
   const characterPromise = loadCharacter(state.characterKey);
@@ -107,10 +113,12 @@ async function boot() {
 // --------------------------------------------------------------------------
 
 async function compileBackend(backend, firstLoad = false) {
-  const label = backend === 'webgpu' ? 'WebGPU' : 'CPU (Wasm)';
   try {
     await state.detector.compile(backend, (f, msg) => {
-      if (firstLoad) setStatus('Preparing pose model…', msg, f);
+      if (firstLoad) setStatus('Preparing pose model…', msg, f * 0.55);
+    });
+    await state.hands.compile(backend, (f, msg) => {
+      if (firstLoad) setStatus('Preparing hand model…', msg, 0.55 + f * 0.45);
     });
   } catch (err) {
     console.error(`Compile for ${backend} failed:`, err);
@@ -119,7 +127,7 @@ async function compileBackend(backend, firstLoad = false) {
       els.backendSelect.querySelector('option[value="webgpu"]').disabled = true;
       return compileBackend('wasm', firstLoad);
     }
-    throw new Error(`Could not compile the pose model: ${err.message}`);
+    throw new Error(`Could not compile models: ${err.message}`);
   }
   els.backendSelect.value = state.detector.backend;
   hud.setBackend(state.detector.backend === 'webgpu' ? 'WebGPU' : 'CPU·Wasm');
@@ -151,6 +159,7 @@ function startInferenceLoop() {
         hud.tickInference(state.detector.lastInferMs);
 
         if (!result) {
+          hud.tickHandsInference(0);
           if (state.latest && now - state.latest.receivedAt > 600) state.latest = null;
           continue;
         }
@@ -161,9 +170,24 @@ function startInferenceLoop() {
         let world = worldSmoother.apply(result.world, dt);
         if (state.mirror) world = mirrorLandmarks(world, 0);
 
+        // Hands: ROI from pose wrists at full video resolution.
+        let hands = [];
+        if (state.hands?.model) {
+          const handResult = await state.hands.detect(els.video, screen);
+          hud.tickHandsInference(handResult.inferMs);
+          hands = handResult.hands.map((h) => {
+            const smoother = h.side === 'Left' ? leftHandSmoother : rightHandSmoother;
+            return {
+              ...h,
+              landmarks: smoother.apply(h.landmarks, dt),
+            };
+          });
+        }
+
         state.latest = {
           screen,
           worldExtended: extendLandmarks(world),
+          hands,
           score: result.score,
           receivedAt: now,
         };
@@ -190,7 +214,12 @@ function startRenderLoop() {
       else state.retargeter.relax(dt); // tracking lost → ease back to rest pose
       hud.setTracking(fresh ? state.retargeter.trackingMode : '–');
     }
-    overlay.draw(fresh ? state.latest.screen : null);
+
+    // Pose + hands stay in camera space; CSS .mirrored flips the overlay with the video.
+    overlay.draw(
+      fresh ? state.latest.screen : null,
+      fresh ? state.latest.hands : null,
+    );
 
     if (recorder.recording && fresh) {
       recorder.capture(state.latest.worldExtended, state.latest.score);
@@ -216,7 +245,7 @@ function setupControls() {
     if (target === state.detector.backend || state.busy) return;
     state.busy = true;
     els.backendSelect.disabled = true;
-    toast(`Compiling model for ${target === 'webgpu' ? 'WebGPU' : 'CPU (Wasm)'}…`, 10000);
+    toast(`Compiling models for ${target === 'webgpu' ? 'WebGPU' : 'CPU (Wasm)'}…`, 10000);
     try {
       await compileBackend(target);
       toast(`Running on ${target === 'webgpu' ? 'WebGPU' : 'CPU (XNNPACK/Wasm)'}`);
