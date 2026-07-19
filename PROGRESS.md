@@ -4,7 +4,7 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 
 **Repo:** https://github.com/agteo/spellcast (public)  
 **Last updated:** 2026-07-19  
-**Current phase:** 2 — First gesture E2E (finishing) → next: 3 — Strange circle
+**Current phase:** 3 — Strange circle (finishing) → next: 4 — Remaining gestures + unlock panel
 
 ## Status legend
 
@@ -16,16 +16,15 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 
 - [x] Init git, add public remote `agteo/spellcast`
 - [x] Clone / vendor LiteRT.js-Mocap base (Apache-compatible attribution)
-- [x] Verify WebGPU path locally (`isWebGPUSupported` + default `webgpu` compile; `npm run build` OK — confirm HUD in Chrome)
-- [x] Add `.gitignore` (node_modules, .env*, litert-wasm copy, OS junk; allow shipped `public/models/*.tflite`)
-- [x] First push: SPEC + PROGRESS + README — no private paths/secrets
-- [x] Vendor push: base app tree + attribution + package rename
+- [x] Verify WebGPU path locally
+- [x] Add `.gitignore`
+- [x] First push + vendor push
 
 ### Phase 1 — Hand tracking
 
 - [x] `src/hands/detector.js` + `landmarks.js`
 - [x] ROI crop from pose wrists; up to 2 hands/frame (1 hand/frame on CPU)
-- [x] Overlay hand skeleton; HUD second INFER row (POSE + HANDS)
+- [x] Overlay hand skeleton; HUD POSE + HANDS rows
 - [ ] Confirm in Chrome: both hands draw; HUD shows pose + hands ms
 
 ### Phase 2 — First gesture E2E
@@ -37,8 +36,9 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 
 ### Phase 3 — Strange circle
 
-- [ ] Trail + least-squares circle fit
-- [ ] Ring shader + bloom + embers
+- [x] Trail + least-squares circle fit (`strangeCircle.js`)
+- [x] Ring shader + bloom + embers
+- [ ] Confirm in Chrome: draw a circle with index+middle → sparking portal
 
 ### Phase 4 — Remaining gestures + unlock panel
 
@@ -71,10 +71,9 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 ## Notes / decisions
 
 - Vendored from https://github.com/andrisgauracs/LiteRT.js-Mocap (see ATTRIBUTION.md).
-- Package name set to `spellcast` (`0.1.0`); base scripts (`dev` / `build` / Wasm copy) unchanged.
-- Shipped BlazePose + Hand Landmark `.tflite` and character `.glb` files are intentionally tracked.
-- Hand ROIs from pose wrist/index/pinky (no palm detector); CPU backend alternates one hand per frame.
-- Finger heart: tip proximity + curled middle/ring/pinky; 4-frame enter hysteresis, ~1.6s cooldown; hearts spawn in Three.js stage mapped from camera-space hand position.
+- Hand ROIs from pose wrist/index/pinky; CPU alternates one hand/frame.
+- Finger heart: tip proximity + curled other fingers; hearts in Three.js stage.
+- Strange circle: index+middle tips together & extended for whole trail; Kåsa fit; ≥300° sweep; world-anchored ring + UnrealBloomPass; ~2.8s cooldown.
 
 ## Blockers
 

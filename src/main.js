@@ -204,9 +204,8 @@ function startInferenceLoop() {
           const events = state.gestures.update(screen, hands, dt);
           for (const ev of events) {
             state.effects.spawn(ev);
-            if (ev.gesture === 'fingerHeart') {
-              toast('♥ Finger heart!', 1200);
-            }
+            if (ev.gesture === 'fingerHeart') toast('♥ Finger heart!', 1200);
+            if (ev.gesture === 'strangeCircle') toast('✧ Strange circle!', 1600);
           }
         }
       } catch (err) {
@@ -244,9 +243,12 @@ function startRenderLoop() {
       els.recFrames.textContent = recorder.frameCount;
     }
 
-    if (state.effects) state.effects.update(dt);
-
-    state.stage.render();
+    if (state.effects) {
+      state.effects.update(dt);
+      state.effects.render();
+    } else {
+      state.stage.render();
+    }
     hud.draw(now);
   };
   requestAnimationFrame(loop);

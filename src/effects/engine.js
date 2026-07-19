@@ -1,12 +1,17 @@
-// Effects engine: spawn / update / dispose. Phase 2 ships heart bursts;
-// ring + bloom land with Strange circle (Phase 3).
+// Effects engine: heart bursts, Strange ring + embers, UnrealBloomPass.
 
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { makeHeartMaterials } from './sprites.js';
+import { StrangeRing } from './ring.js';
+import { createEmberBurst } from './particles.js';
 
 /**
  * Map normalized camera-space hand coords into the Three.js stage.
- * Mirror flips x so hearts line up with the mirrored character.
+ * Mirror flips x so effects line up with the mirrored character.
  */
 export function screenToStage(pos, mirror = true) {
   const xNorm = mirror ? 1 - pos.x : pos.x;
@@ -15,6 +20,11 @@ export function screenToStage(pos, mirror = true) {
     (1 - pos.y) * 1.7 + 0.25,
     0.55,
   );
+}
+
+/** Map a normalized screen radius into stage units. */
+export function screenRadiusToStage(r) {
+  return Math.max(0.12, Math.min(0.85, r * 2.4));
 }
 
 class HeartBurst {
@@ -40,7 +50,6 @@ class HeartBurst {
       sprite.userData.vx = (Math.random() - 0.5) * 0.55;
       sprite.userData.vy = 0.55 + Math.random() * 0.75;
       sprite.userData.vz = (Math.random() - 0.5) * 0.2;
-      sprite.userData.spin = (Math.random() - 0.5) * 2;
       this.group.add(sprite);
       this.sprites.push(sprite);
     }
@@ -59,8 +68,7 @@ class HeartBurst {
       s.position.z += s.userData.vz * dt;
       s.userData.vy += 0.12 * dt;
       s.material.opacity = Math.max(0, 1 - t * t);
-      const base = s.userData.baseScale;
-      s.scale.setScalar(base * (1 + t * 0.4));
+      s.scale.setScalar(s.userData.baseScale * (1 + t * 0.4));
     }
   }
 
@@ -68,7 +76,6 @@ class HeartBurst {
     if (!this.alive) return;
     this.alive = false;
     for (const s of this.sprites) {
-      // Materials are clones; textures stay owned by EffectsEngine.heartMats.
       s.material.dispose();
       this.group.remove(s);
     }
@@ -86,10 +93,30 @@ export class EffectsEngine {
     this.heartMats = makeHeartMaterials();
     this.active = [];
     this.mirror = true;
+
+    const size = new THREE.Vector2();
+    stage.renderer.getSize(size);
+    this.composer = new EffectComposer(stage.renderer);
+    this.composer.addPass(new RenderPass(stage.scene, stage.camera));
+    this.bloomPass = new UnrealBloomPass(size.clone(), 0.65, 0.35, 0.82);
+    this.composer.addPass(this.bloomPass);
+    this.composer.addPass(new OutputPass());
+    this._lastW = size.x;
+    this._lastH = size.y;
   }
 
   setMirror(mirror) {
     this.mirror = mirror;
+  }
+
+  #syncComposerSize() {
+    const size = new THREE.Vector2();
+    this.stage.renderer.getSize(size);
+    if (size.x === this._lastW && size.y === this._lastH) return;
+    this._lastW = size.x;
+    this._lastH = size.y;
+    this.composer.setSize(size.x, size.y);
+    this.bloomPass.resolution.set(size.x, size.y);
   }
 
   spawn(event) {
@@ -97,6 +124,12 @@ export class EffectsEngine {
     if (event.gesture === 'fingerHeart') {
       const origin = screenToStage(event.position, this.mirror);
       this.active.push(new HeartBurst(this.root, this.heartMats, origin));
+      return;
+    }
+    if (event.gesture === 'strangeCircle') {
+      const center = screenToStage(event.position, this.mirror);
+      const radius = screenRadiusToStage(event.radius ?? 0.12);
+      this.active.push(new StrangeRing(this.root, center, radius, createEmberBurst));
     }
   }
 
@@ -108,6 +141,12 @@ export class EffectsEngine {
     }
   }
 
+  /** Bloom-composited frame (replaces bare stage.render). */
+  render() {
+    this.#syncComposerSize();
+    this.composer.render();
+  }
+
   dispose() {
     for (const fx of this.active) fx.dispose();
     this.active = [];
@@ -116,5 +155,6 @@ export class EffectsEngine {
       m.dispose();
     }
     this.stage.scene.remove(this.root);
+    this.composer?.dispose();
   }
 }

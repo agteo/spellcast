@@ -1,21 +1,23 @@
 // Gesture registry: hysteresis + per-gesture cooldown, characters.js-style.
 // Each recognizer: update(pose, hands, dt) → event|null
-// Events: { gesture, confidence, hand, position }
+// Events: { gesture, confidence, hand, position, ... }
 
 import * as fingerHeart from './fingerHeart.js';
+import * as strangeCircle from './strangeCircle.js';
 
-const RECOGNIZERS = [fingerHeart];
+const RECOGNIZERS = [fingerHeart, strangeCircle];
 
 /**
  * Tracks enter/exit with hysteresis and enforces cooldowns so a held pose
- * doesn't spam the effects engine.
+ * doesn't spam the effects engine. Instant gestures (trail completions)
+ * fire on the first confident frame via `_instant`.
  */
 export class GestureEngine {
   /**
    * @param {object} [opts]
    * @param {number} [opts.enterFrames=4] consecutive hits to fire
    * @param {number} [opts.exitFrames=3] consecutive misses to clear active
-   * @param {number} [opts.cooldownSec=1.6] silence after a fire
+   * @param {number} [opts.cooldownSec=1.6] default silence after a fire
    */
   constructor(opts = {}) {
     this.enterFrames = opts.enterFrames ?? 4;
@@ -40,7 +42,7 @@ export class GestureEngine {
   }
 
   /**
-   * @returns {Array<{ gesture, confidence, hand, position }>}
+   * @returns {Array<{ gesture, confidence, hand, position, radius?: number }>}
    */
   update(pose, hands, dt = 1 / 60) {
     this.time += dt;
@@ -60,7 +62,6 @@ export class GestureEngine {
         continue;
       }
 
-      // Prefer recognizer's enter hint when present (fingerHeart tip threshold).
       const entering = raw._enter !== undefined ? raw._enter : raw.confidence >= 0.55;
       if (entering) {
         slot.hits += 1;
@@ -70,20 +71,17 @@ export class GestureEngine {
         slot.hits = 0;
       }
 
-      if (!slot.active && slot.hits >= this.enterFrames) {
+      const needHits = raw._instant ? 1 : this.enterFrames;
+      if (!slot.active && slot.hits >= needHits) {
         slot.active = true;
-        slot.coolUntil = this.time + this.cooldownSec;
+        const cool = raw._cooldown ?? this.cooldownSec;
+        slot.coolUntil = this.time + cool;
         slot.hits = 0;
-        events.push({
-          gesture: raw.gesture,
-          confidence: raw.confidence,
-          hand: raw.hand,
-          position: raw.position,
-        });
+        const { _enter, _instant, _cooldown, _ratio, ...event } = raw;
+        events.push(event);
       }
     }
 
-    // Decay slots that didn't fire this frame.
     for (const [key, slot] of this.state) {
       if (seen.has(key)) continue;
       slot.misses += 1;

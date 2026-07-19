@@ -15,7 +15,7 @@ Use Chrome (or another WebGPU browser) for the fast path. The app detects missin
 
 ## Status
 
-**Phase 2 — First gesture:** Korean finger heart unlocks a floating heart burst in the 3D stage.
+**Phase 3 — Strange circle:** draw a circle with index+middle fingers to conjure a sparking orange portal (bloom + embers).
 
 See [SPEC.md](./SPEC.md) for the product contract and [PROGRESS.md](./PROGRESS.md) for the phased build tracker.
 
