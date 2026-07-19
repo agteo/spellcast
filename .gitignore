@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+.npm/
+.yarn/
+.pnpm-store/
+
+# Environment / secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Build / cache
+dist/
+build/
+.cache/
+.parcel-cache/
+.vite/
+*.local
+
+# Model / asset caches (re-downloadable; keep repo lean)
+*.tflite
+!assets/**/*.tflite
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+*.code-workspace
+
+# Logs / coverage
+logs/
+*.log
+npm-debug.log*
+coverage/
+.nyc_output/
+
+# Personal / local media samples
+samples/
+recordings/
+*.webm
+*.mp4
+*.mov
+
+# Compound engineering / local agent config (if present)
+.compound-engineering/config.local.yaml
