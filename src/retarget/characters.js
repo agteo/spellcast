@@ -14,6 +14,9 @@
 //   targetHeight   — world-units height the character is auto-scaled to
 //   pelvis / chest — basis-driven bones (full 3D orientation from the hip
 //                    line / shoulder line + spine direction)
+//   head           — basis-driven bone oriented from FACE landmarks (ear
+//                    line + nose). Takes precedence over any segment entry
+//                    on the same bone.
 //   segments       — direction-driven bones. Each entry:
 //        bone:  bone node name in the glb
 //        child: bone whose rest offset defines which way `bone` points in
@@ -42,12 +45,14 @@ export const CHARACTERS = {
     },
     pelvis: { bone: 'Hips' },
     chest: { bone: 'Torso' },
+    // Full 3D head orientation from face landmarks (ear line + nose).
+    // Overrides any direction segment configured on the same bone.
+    head: { bone: 'Head' },
     segments: [
       // spine: hip center -> shoulder center
       { bone: 'Abdomen', child: 'Torso', from: 'HIP_CENTER', to: 'NECK' },
-      // head: shoulder center -> ear center
+      // neck lean: shoulder center -> ear center (head itself is basis-driven)
       { bone: 'Neck', child: 'Head', from: 'NECK', to: 'HEAD_CENTER' },
-      { bone: 'Head', child: 'Head_end', from: 'NECK', to: 'HEAD_CENTER' },
       // arms
       { bone: 'UpperArm.L', child: 'LowerArm.L', from: 'LEFT_SHOULDER', to: 'LEFT_ELBOW' },
       { bone: 'LowerArm.L', child: 'Palm2.L', from: 'LEFT_ELBOW', to: 'LEFT_WRIST' },
@@ -75,11 +80,11 @@ export const CHARACTERS = {
     targetHeight: 1.7,
     pelvis: { bone: 'mixamorig:Hips' },
     chest: { bone: 'mixamorig:Spine2' },
+    head: { bone: 'mixamorig:Head' },
     segments: [
       { bone: 'mixamorig:Spine', child: 'mixamorig:Spine1', from: 'HIP_CENTER', to: 'NECK' },
       { bone: 'mixamorig:Spine1', child: 'mixamorig:Spine2', from: 'HIP_CENTER', to: 'NECK' },
       { bone: 'mixamorig:Neck', child: 'mixamorig:Head', from: 'NECK', to: 'HEAD_CENTER' },
-      { bone: 'mixamorig:Head', child: 'mixamorig:HeadTop_End', from: 'NECK', to: 'HEAD_CENTER' },
       { bone: 'mixamorig:LeftArm', child: 'mixamorig:LeftForeArm', from: 'LEFT_SHOULDER', to: 'LEFT_ELBOW' },
       { bone: 'mixamorig:LeftForeArm', child: 'mixamorig:LeftHand', from: 'LEFT_ELBOW', to: 'LEFT_WRIST' },
       { bone: 'mixamorig:RightArm', child: 'mixamorig:RightForeArm', from: 'RIGHT_SHOULDER', to: 'RIGHT_ELBOW' },

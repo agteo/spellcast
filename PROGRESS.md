@@ -84,8 +84,8 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 - Hand ROIs from pose wrist/index/pinky; CPU alternates one hand/frame + stride-2; offscreen wrists skip infer.
 - Tunables live in `src/gestures/thresholds.js`.
 - Ghost / custom GLB / share features are local-only (no backend).
-- Face/torso mapping in close face-only framing remains a known limitation — prefer shoulders-to-hips framing.
+- Head is now basis-driven from FACE landmarks (ear line + eye-midpoint forward) — follows head yaw/pitch/roll even in face-only framing. Chest-up framing also relaxes hip-dependent spine segments (extrapolated hips sometimes pass the visibility gate and used to bend the torso).
 
 ## Blockers
 
-- Face/torso mapping is still unreliable in close face-only framing. Deferred for focused retargeting diagnosis; use shoulders-to-hips framing for gesture testing.
+- None. Face-only head mapping fixed via face-basis head driver (verify in Chrome).

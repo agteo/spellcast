@@ -38,12 +38,17 @@
 //      process the skeleton top-down (hips → spine → limbs) and express
 //      every target direction in the CURRENT parent world rotation.
 //
-//   4. FULL-BASIS JOINTS (pelvis & chest)
+//   4. FULL-BASIS JOINTS (pelvis, chest & head)
 //      A single direction can't capture twist. For the pelvis and chest we
 //      have more information — the hip line and the shoulder line — so we
 //      build a complete orthonormal basis (left, up, forward = left × up)
 //      and derive a full 3D orientation. This is what makes the character
 //      turn and lean with you instead of just waving limbs.
+//      The HEAD gets the same treatment from the FACE: ear line + nose
+//      direction. Face landmarks are real detections whenever a face is on
+//      camera (unlike shoulders/hips, which the model extrapolates when out
+//      of frame), so the head follows your actual head orientation even in
+//      a face-only framing.
 //
 //   5. SMOOTHING
 //      Landmarks are One-Euro filtered upstream; on top of that every bone
@@ -183,6 +188,30 @@ export class Retargeter {
       });
     }
 
+    // --- Head basis: full 3D head orientation from FACE landmarks (ear line
+    // + ears→nose forward). Face points are real detections whenever a face
+    // is on camera — unlike shoulders/hips, which the model extrapolates
+    // (often with passing visibility scores) when they're out of frame. The
+    // old NECK→HEAD_CENTER direction segments depended on those extrapolated
+    // shoulders and couldn't see head pitch/yaw at all, so in a face-only
+    // framing the head ended up aimed by garbage. The basis replaces any
+    // direction segment configured on the same bone.
+    const headBone = cfg.head && this.#bone(cfg.head.bone);
+    if (headBone) {
+      this.segments = this.segments.filter((s) => s.bone !== headBone);
+      this.basisJoints.push({
+        type: 'basis',
+        key: 'head',
+        bone: headBone,
+        left: LM.LEFT_EAR,
+        right: LM.RIGHT_EAR,
+        group: null,
+        restWorldQuat: headBone.getWorldQuaternion(Q()),
+        restQuat: headBone.quaternion.clone(),
+        depth: this.#depth(headBone),
+      });
+    }
+
     // One solve order for ALL rotation drivers: strictly parents before
     // children, regardless of driver type — the chest sits between the spine
     // and the arms, so interleaving matters.
@@ -312,7 +341,45 @@ export class Retargeter {
         }
 
         let liveBasisQuat = null;
-        if (chestFraming) {
+        if (d.key === 'head') {
+          // --- 4c. Face basis (head bone) — framing-independent.
+          // left = ear line, forward = ear-midpoint → EYE-midpoint (eyes sit
+          // roughly level with the ear canals, so a level head gives a level
+          // forward axis — the nose would bake in a permanent nod-down bias),
+          // up = forward × left. All four landmarks are real detections
+          // whenever the face is on camera, so this captures head yaw AND
+          // pitch AND roll — the things the old shoulder-dependent direction
+          // segment never could.
+          if (
+            vis[d.left] < VISIBILITY_THRESHOLD ||
+            vis[d.right] < VISIBILITY_THRESHOLD ||
+            vis[LM.LEFT_EYE] < VISIBILITY_THRESHOLD ||
+            vis[LM.RIGHT_EYE] < VISIBILITY_THRESHOLD
+          ) {
+            d.bone.quaternion.slerp(d.restQuat, boneRelaxAlpha);
+            continue;
+          }
+          const left = pts[d.left].clone().sub(pts[d.right]);
+          const earMid = pts[d.left].clone().add(pts[d.right]).multiplyScalar(0.5);
+          const eyeMid = pts[LM.LEFT_EYE].clone().add(pts[LM.RIGHT_EYE]).multiplyScalar(0.5);
+          const forward = eyeMid.sub(earMid);
+          if (left.lengthSq() < 1e-8) {
+            d.bone.quaternion.slerp(d.restQuat, boneRelaxAlpha);
+            continue;
+          }
+          left.normalize();
+          // Make forward exactly perpendicular to the ear line.
+          forward.addScaledVector(left, -forward.dot(left));
+          if (forward.lengthSq() < 1e-6) {
+            // Eyes collapsed onto the ear line (extreme profile) → unreadable.
+            d.bone.quaternion.slerp(d.restQuat, boneRelaxAlpha);
+            continue;
+          }
+          forward.normalize();
+          const up = new THREE.Vector3().crossVectors(forward, left).normalize();
+          const basis = new THREE.Matrix4().makeBasis(left, up, forward);
+          liveBasisQuat = Q().setFromRotationMatrix(basis);
+        } else if (chestFraming) {
           // --- 4b. Shoulder-only basis (chest-up framing).
           // Only the shoulder line is trustworthy; the up axis is assumed to
           // be gravity (person roughly upright — which is all a chest-up
@@ -388,6 +455,19 @@ export class Retargeter {
         // but an elbow that leaves the frame doesn't stay frozen forever).
         // The spine segment reads the virtual HIP_CENTER, whose visibility is
         // the min of both hips — so face-only framing correctly relaxes it.
+        //
+        // In chest-up framing hips are DECLARED untrustworthy: the model
+        // sometimes scores extrapolated out-of-frame hips above the
+        // visibility threshold, and then the spine segments bend the torso
+        // toward a guessed hip center. Relax them; the chest basis already
+        // carries the torso in this mode.
+        if (
+          this.framing === 'chest' &&
+          (d.from === LM.HIP_CENTER || d.to === LM.HIP_CENTER)
+        ) {
+          d.bone.quaternion.slerp(d.restQuat, boneRelaxAlpha);
+          continue;
+        }
         if (vis[d.from] < VISIBILITY_THRESHOLD || vis[d.to] < VISIBILITY_THRESHOLD) {
           d.bone.quaternion.slerp(d.restQuat, boneRelaxAlpha);
           continue;

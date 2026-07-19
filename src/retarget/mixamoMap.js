@@ -104,9 +104,6 @@ export function configFromMixamoMap(map, meta) {
     { bone: b('spine1'), child: b('spine2'), from: 'HIP_CENTER', to: 'NECK' },
     { bone: b('neck'), child: b('head'), from: 'NECK', to: 'HEAD_CENTER' },
   ];
-  if (b('headTop')) {
-    segments.push({ bone: b('head'), child: b('headTop'), from: 'NECK', to: 'HEAD_CENTER' });
-  }
   segments.push(
     { bone: b('leftArm'), child: b('leftForeArm'), from: 'LEFT_SHOULDER', to: 'LEFT_ELBOW' },
     { bone: b('leftForeArm'), child: b('leftHand'), from: 'LEFT_ELBOW', to: 'LEFT_WRIST' },
@@ -131,6 +128,7 @@ export function configFromMixamoMap(map, meta) {
     custom: true,
     pelvis: { bone: b('hips') },
     chest: { bone: b('spine2') },
+    head: { bone: b('head') },
     segments,
     positionBones: [],
   };
