@@ -28,6 +28,8 @@ import { Overlay } from './overlay.js';
 import { Hud } from './hud.js';
 import { SessionRecorder } from './exporter.js';
 import { GhostPlayer } from './replay/ghost.js';
+import { ClipRecorder, clipFilename, downloadBlob } from './share/recorder.js';
+import { downloadShareCard } from './share/card.js';
 import { setStatus, hideStatus, showError, toast } from './ui.js';
 
 const els = {
@@ -42,6 +44,8 @@ const els = {
   ghostToggle: document.getElementById('ghost-toggle'),
   exportJsonBtn: document.getElementById('export-json-btn'),
   exportBvhBtn: document.getElementById('export-bvh-btn'),
+  clipBtn: document.getElementById('clip-btn'),
+  shareCardBtn: document.getElementById('share-card-btn'),
   glbInput: document.getElementById('glb-input'),
   dropOverlay: document.getElementById('drop-overlay'),
   recBadge: document.getElementById('rec-badge'),
@@ -68,6 +72,7 @@ const state = {
 const hud = new Hud();
 const recorder = new SessionRecorder();
 const unlockTracker = new UnlockTracker(document.getElementById('unlock-grid'));
+let clipRecorder = null;
 // Debug handle (also handy on camera: poke the pipeline from DevTools).
 window.__mocap = state;
 window.__mocap.recorder = recorder;
@@ -120,6 +125,11 @@ async function boot() {
   await Promise.all([compilePromise, characterPromise]);
 
   // 4. Wire up the controls and start both loops.
+  clipRecorder = new ClipRecorder({
+    video: els.video,
+    overlay: els.overlay,
+    getStageCanvas: () => state.stage.renderer.domElement,
+  });
   setupControls();
   hideStatus();
   startInferenceLoop();
@@ -359,6 +369,22 @@ function setupControls() {
   els.exportJsonBtn.addEventListener('click', () => recorder.exportJSON());
   els.exportBvhBtn.addEventListener('click', () => recorder.exportBVH());
 
+  els.clipBtn.disabled = false;
+  els.shareCardBtn.disabled = false;
+  els.clipBtn.addEventListener('click', async () => {
+    if (clipRecorder.recording) await stopClip();
+    else startClip();
+  });
+  els.shareCardBtn.addEventListener('click', async () => {
+    try {
+      await downloadShareCard(unlockTracker.snapshot());
+      toast('Share card PNG downloaded.', 2500);
+    } catch (err) {
+      console.error(err);
+      toast(`Share card failed: ${err.message}`, 4000);
+    }
+  });
+
   els.glbInput?.addEventListener('change', async () => {
     const file = els.glbInput.files?.[0];
     if (file) await importCustomGlb(file);
@@ -459,6 +485,30 @@ function addCharacterOption(key, label) {
   opt.value = key;
   opt.textContent = label;
   els.characterSelect.appendChild(opt);
+}
+
+function startClip() {
+  try {
+    clipRecorder.start();
+    els.clipBtn.textContent = '■ Stop clip';
+    els.clipBtn.classList.add('clipping');
+    toast('Recording shareable clip…', 2000);
+  } catch (err) {
+    console.error(err);
+    toast(`Clip failed: ${err.message}`, 5000);
+  }
+}
+
+async function stopClip() {
+  const blob = await clipRecorder.stop();
+  els.clipBtn.textContent = '● Clip';
+  els.clipBtn.classList.remove('clipping');
+  if (!blob) {
+    toast('Clip was empty — try again.', 3000);
+    return;
+  }
+  downloadBlob(blob, clipFilename());
+  toast(`Clip saved (${(blob.size / 1e6).toFixed(1)} MB webm)`, 3500);
 }
 
 function startRecording() {

@@ -15,7 +15,7 @@ Use Chrome (or another WebGPU browser) for the fast path. The app detects missin
 
 ## Status
 
-**Phase 6 — Custom characters:** drag-and-drop a Mixamo-style `.glb` to auto-map bones (or get a clear toast if names don't match).
+**Phase 7 — Share:** ● Clip downloads a local WebM; Share card downloads a PNG of unlocked gestures + best combo.
 
 See [SPEC.md](./SPEC.md) for the product contract and [PROGRESS.md](./PROGRESS.md) for the phased build tracker.
 

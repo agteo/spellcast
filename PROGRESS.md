@@ -4,7 +4,7 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 
 **Repo:** https://github.com/agteo/spellcast (public)  
 **Last updated:** 2026-07-19  
-**Current phase:** 6 — Custom characters (finishing) → next: 7 — Share
+**Current phase:** 7 — Share (finishing) → next: 8 — Polish
 
 ## Status legend
 
@@ -61,7 +61,9 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 
 ### Phase 7 — Share
 
-- [ ] MediaRecorder clip + share-card PNG
+- [x] MediaRecorder side-by-side WebM clip (`src/share/recorder.js`)
+- [x] Share-card PNG with unlock grid + best combo (`src/share/card.js`)
+- [ ] Confirm clip + card download in Chrome
 
 ### Phase 8 — Polish
 
@@ -86,6 +88,7 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 - Unlock discovery is session-only; no identity, storage, or backend.
 - Ghost replay: Save take snapshots `litert-mocap/1` frames in memory; Ghost loads a translucent offset clone of the take's character and loops bone rotations.
 - Custom characters: dropped Mixamo-style `.glb` files get a runtime bone map; non-matching rigs toast missing roles and suggest a `characters.js` entry.
+- Share: Clip composites camera+overlay with the bloom stage into a local WebM; Share card is an offline PNG of unlocks + best combo (4.5s window).
 
 ## Blockers
 

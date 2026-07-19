@@ -77,10 +77,10 @@ button {
 }
 button:hover:not(:disabled) { border-color: var(--accent); }
 button:disabled { opacity: 0.45; cursor: default; }
-button.recording {
-  background: #3b1219;
-  border-color: var(--danger);
-  color: var(--danger);
+button.clipping {
+  background: #14253b;
+  border-color: #38bdf8;
+  color: #7dd3fc;
 }
 
 /* ---- Main split stage ---- */

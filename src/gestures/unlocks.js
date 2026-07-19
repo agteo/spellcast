@@ -6,12 +6,17 @@ export const GESTURE_CATALOG = [
   { id: 'fingerGun', icon: '⌁', label: 'Finger Gun' },
 ];
 
+const COMBO_WINDOW_MS = 4500;
+
 /** Session-only discovery tracker; no backend or persistent identity. */
 export class UnlockTracker {
   constructor(container) {
     this.container = container;
     this.unlocked = new Set();
     this.items = new Map();
+    this.bestCombo = 0;
+    this._combo = 0;
+    this._lastFireAt = 0;
     for (const gesture of GESTURE_CATALOG) {
       const item = document.createElement('div');
       item.className = 'unlock-item';
@@ -26,7 +31,12 @@ export class UnlockTracker {
     this.#updateCount();
   }
 
+  /**
+   * Mark a gesture as discovered (first time) and advance the session combo.
+   * @returns {boolean} true if this was a first unlock
+   */
   unlock(id) {
+    this.#noteFire();
     if (this.unlocked.has(id)) return false;
     const item = this.items.get(id);
     if (!item) return false;
@@ -42,6 +52,23 @@ export class UnlockTracker {
     );
     this.#updateCount();
     return true;
+  }
+
+  /** Snapshot for share-card rendering. */
+  snapshot() {
+    return {
+      unlocked: new Set(this.unlocked),
+      unlockedCount: this.unlocked.size,
+      bestCombo: this.bestCombo,
+    };
+  }
+
+  #noteFire() {
+    const now = performance.now();
+    if (now - this._lastFireAt <= COMBO_WINDOW_MS) this._combo += 1;
+    else this._combo = 1;
+    this._lastFireAt = now;
+    if (this._combo > this.bestCombo) this.bestCombo = this._combo;
   }
 
   #updateCount() {
