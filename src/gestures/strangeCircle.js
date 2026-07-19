@@ -5,18 +5,20 @@
 
 import { HAND_LM } from '../hands/landmarks.js';
 import { dist2, mid, fingerCurled, fingerExtended } from './geometry.js';
+import { GESTURE } from './thresholds.js';
 
 export const GESTURE_ID = 'strangeCircle';
 
-const TIP_TOGETHER_ENTER = 0.35; // vs palm size
-const TIP_TOGETHER_EXIT = 0.5;
-const MIN_POINTS = 18;
-const MAX_POINTS = 90;
-const MIN_DURATION = 0.45; // seconds
-const MIN_RADIUS = 0.04;   // normalized screen units
-const MAX_RADIUS = 0.35;
-const MAX_RMS = 0.04;
-const MIN_SWEEP_DEG = 300;
+const T = GESTURE.strangeCircle;
+const TIP_TOGETHER_ENTER = T.tipTogetherEnter;
+const TIP_TOGETHER_EXIT = T.tipTogetherExit;
+const MIN_POINTS = T.minPoints;
+const MAX_POINTS = T.maxPoints;
+const MIN_DURATION = T.minDuration;
+const MIN_RADIUS = T.minRadius;
+const MAX_RADIUS = T.maxRadius;
+const MAX_RMS = T.maxRms;
+const MIN_SWEEP_DEG = T.minSweepDeg;
 
 /** @type {Map<string, { points: Array<{x,y,t}>, t: number }>} */
 const trails = new Map();
@@ -153,7 +155,7 @@ export function update(_pose, hands, dt = 1 / 60) {
       radius: fit.r,
       _enter: true,
       _instant: true,
-      _cooldown: 2.8,
+      _cooldown: T.cooldown,
     };
     trails.delete(key);
     break;

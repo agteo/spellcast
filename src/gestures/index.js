@@ -7,6 +7,7 @@ import * as strangeCircle from './strangeCircle.js';
 import * as dab from './dab.js';
 import * as armsV from './armsV.js';
 import * as fingerGun from './fingerGun.js';
+import { GESTURE } from './thresholds.js';
 
 const RECOGNIZERS = [fingerHeart, strangeCircle, dab, armsV, fingerGun];
 
@@ -18,14 +19,14 @@ const RECOGNIZERS = [fingerHeart, strangeCircle, dab, armsV, fingerGun];
 export class GestureEngine {
   /**
    * @param {object} [opts]
-   * @param {number} [opts.enterFrames=4] consecutive hits to fire
-   * @param {number} [opts.exitFrames=3] consecutive misses to clear active
-   * @param {number} [opts.cooldownSec=1.6] default silence after a fire
+   * @param {number} [opts.enterFrames] consecutive hits to fire
+   * @param {number} [opts.exitFrames] consecutive misses to clear active
+   * @param {number} [opts.cooldownSec] default silence after a fire
    */
   constructor(opts = {}) {
-    this.enterFrames = opts.enterFrames ?? 4;
-    this.exitFrames = opts.exitFrames ?? 3;
-    this.cooldownSec = opts.cooldownSec ?? 1.6;
+    this.enterFrames = opts.enterFrames ?? GESTURE.enterFrames;
+    this.exitFrames = opts.exitFrames ?? GESTURE.exitFrames;
+    this.cooldownSec = opts.cooldownSec ?? GESTURE.cooldownSec;
     /** @type {Map<string, { hits: number, misses: number, active: boolean, coolUntil: number }>} */
     this.state = new Map();
     this.time = 0;

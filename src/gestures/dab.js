@@ -2,8 +2,11 @@
 
 import { LM } from '../pose/landmarks.js';
 import { dist2, mid } from './geometry.js';
+import { GESTURE } from './thresholds.js';
 
 export const GESTURE_ID = 'dab';
+
+const T = GESTURE.dab;
 
 function armLength(pose, shoulder, elbow, wrist) {
   return dist2(pose[shoulder], pose[elbow]) + dist2(pose[elbow], pose[wrist]);
@@ -48,8 +51,8 @@ export function update(pose) {
     const extension = straightness(pose, side.farShoulder, side.farElbow, side.farWrist);
     const farWrist = pose[side.farWrist];
     const farShoulder = pose[side.farShoulder];
-    const reachesOut = Math.abs(farWrist.x - farShoulder.x) > shoulderWidth * 0.65;
-    if (faceDistance > 0.7 || extension < 0.86 || !reachesOut) continue;
+    const reachesOut = Math.abs(farWrist.x - farShoulder.x) > shoulderWidth * T.reachOutMin;
+    if (faceDistance > T.faceElbowMax || extension < T.armStraightMin || !reachesOut) continue;
 
     const confidence = Math.min(1, (1 - faceDistance / 0.9) * 0.6 + extension * 0.4);
     const candidate = {
@@ -58,7 +61,7 @@ export function update(pose) {
       hand: side.hand,
       position: mid(pose[LM.LEFT_SHOULDER], pose[LM.RIGHT_SHOULDER]),
       _enter: confidence >= 0.62,
-      _cooldown: 2.2,
+      _cooldown: T.cooldown,
     };
     if (!best || candidate.confidence > best.confidence) best = candidate;
   }

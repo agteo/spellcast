@@ -1,6 +1,6 @@
 {
   "name": "spellcast",
-  "version": "0.1.0",
+  "version": "0.8.0",
   "description": "Gesture-unlocked visual effects on LiteRT.js browser motion capture",
   "type": "module",
   "scripts": {

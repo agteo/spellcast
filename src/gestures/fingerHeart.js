@@ -2,12 +2,11 @@
 
 import { HAND_LM } from '../hands/landmarks.js';
 import { dist2, mid, fingerCurled, fingerExtended } from './geometry.js';
+import { GESTURE } from './thresholds.js';
 
 export const GESTURE_ID = 'fingerHeart';
 
-/** Tip distance relative to palm size (wrist→middle MCP). */
-const ENTER_RATIO = 0.28;
-const EXIT_RATIO = 0.42;
+const { enterRatio: ENTER_RATIO, exitRatio: EXIT_RATIO } = GESTURE.fingerHeart;
 
 /**
  * @returns {null | { gesture, confidence, hand, position }}

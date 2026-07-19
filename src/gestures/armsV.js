@@ -3,8 +3,11 @@
 
 import { LM } from '../pose/landmarks.js';
 import { dist2, mid } from './geometry.js';
+import { GESTURE } from './thresholds.js';
 
 export const GESTURE_ID = 'armsV';
+
+const T = GESTURE.armsV;
 
 function armStraightness(pose, shoulder, elbow, wrist) {
   const path = dist2(pose[shoulder], pose[elbow]) + dist2(pose[elbow], pose[wrist]);
@@ -36,14 +39,14 @@ export function update(pose) {
   const wristMaxX = Math.max(pose[LM.LEFT_WRIST].x, pose[LM.RIGHT_WRIST].x);
   const opensOutward = wristMinX < shoulderMinX && wristMaxX > shoulderMaxX;
 
-  if (!wristsAboveHead || !opensOutward || spread < 1.45) return null;
+  if (!wristsAboveHead || !opensOutward || spread < T.spreadMin) return null;
   const confidence = Math.min(1, ((leftStraight + rightStraight) / 2) * 0.75 + Math.min(spread / 2.5, 1) * 0.25);
   return {
     gesture: GESTURE_ID,
     confidence,
     hand: 'Both',
     position: mid(pose[LM.LEFT_WRIST], pose[LM.RIGHT_WRIST]),
-    _enter: leftStraight > 0.86 && rightStraight > 0.86 && confidence >= 0.72,
-    _cooldown: 2.5,
+    _enter: leftStraight > T.armStraightMin && rightStraight > T.armStraightMin && confidence >= 0.72,
+    _cooldown: T.cooldown,
   };
 }

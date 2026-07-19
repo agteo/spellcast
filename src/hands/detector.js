@@ -3,17 +3,16 @@
 //
 // Uses MediaPipe Hand Landmark (full) .tflite. Palm detection is skipped:
 // each hand crop comes from BlazePose wrist + index/pinky tips (Holistic-style).
-// Up to two inferences per frame; low-visibility wrists are skipped.
+// Up to two inferences per frame; low-visibility / offscreen wrists are skipped.
+// On CPU: at most one hand per infer frame, and every-other-frame inference.
 // ---------------------------------------------------------------------------
 
 import { loadAndCompile, Tensor } from '@litertjs/core';
 import { LM } from '../pose/landmarks.js';
 import { NUM_HAND_LANDMARKS } from './landmarks.js';
+import { HANDS } from '../gestures/thresholds.js';
 
 const sigmoid = (x) => 1 / (1 + Math.exp(-x));
-
-const WRIST_VIS_MIN = 0.45;
-const HAND_SCORE_MIN = 0.5;
 
 export class HandDetector {
   constructor({ modelUrl = '/models/hand_landmark_full.tflite' } = {}) {
@@ -27,6 +26,9 @@ export class HandDetector {
     this.lastInferMs = 0;
     /** On CPU, alternate which hand runs when both wrists are visible. */
     this._cpuHandToggle = 0;
+    this._frame = 0;
+    /** @type {Map<string, object>} */
+    this._lastBySide = new Map();
 
     this.cropCanvas = document.createElement('canvas');
     this.cropCtx = this.cropCanvas.getContext('2d', { willReadFrequently: true });
@@ -95,8 +97,6 @@ export class HandDetector {
    * @param {HTMLVideoElement} video
    * @param {Array<{x,y,z,visibility}>} poseScreen  unmirrored normalized pose
    * @returns {{ hands: Array<HandResult>, inferMs: number }}
-   *
-   * HandResult: { handedness: 'Left'|'Right', score, landmarks, world? }
    */
   async detect(video, poseScreen) {
     if (!this.model || !poseScreen) {
@@ -106,10 +106,25 @@ export class HandDetector {
     const vw = video.videoWidth, vh = video.videoHeight;
     if (!vw || !vh) return { hands: [], inferMs: 0 };
 
+    this._frame += 1;
     const candidates = this.#candidatesFromPose(poseScreen);
-    let toRun = candidates;
 
-    // Spec risk: CPU hand infer is expensive — drop to one hand / frame.
+    // No on-screen wrists → clear cache and skip all hand work.
+    if (!candidates.length) {
+      this._lastBySide.clear();
+      this.lastInferMs = 0;
+      return { hands: [], inferMs: 0 };
+    }
+
+    // Spec risk: CPU hand infer is expensive — every-other-frame + ≤1 hand.
+    if (this.backend === 'wasm') {
+      if (this._frame % HANDS.cpuFrameStride !== 0) {
+        this.lastInferMs = 0;
+        return { hands: this.#cachedHands(candidates), inferMs: 0 };
+      }
+    }
+
+    let toRun = candidates;
     if (this.backend === 'wasm' && candidates.length > 1) {
       toRun = [candidates[this._cpuHandToggle % candidates.length]];
       this._cpuHandToggle++;
@@ -125,7 +140,10 @@ export class HandDetector {
 
       const rawPresence = outputs.presence[0];
       const presence = rawPresence >= 0 && rawPresence <= 1 ? rawPresence : sigmoid(rawPresence);
-      if (presence < HAND_SCORE_MIN) continue;
+      if (presence < HANDS.scoreMin) {
+        this._lastBySide.delete(c.side);
+        continue;
+      }
 
       const landmarks = this.#decodeLandmarks(outputs.landmarks, roi, vw, vh);
       let handednessScore = 0.5;
@@ -133,20 +151,49 @@ export class HandDetector {
         const h = outputs.handedness[0];
         handednessScore = h >= 0 && h <= 1 ? h : sigmoid(h);
       }
-      // Prefer the pose-side label; model handedness is a secondary signal.
-      const handedness = c.side;
 
-      hands.push({
-        handedness,
+      const hand = {
+        handedness: c.side,
         score: presence,
         handednessScore,
         landmarks,
         side: c.side,
-      });
+      };
+      hands.push(hand);
+      this._lastBySide.set(c.side, hand);
     }
 
+    // Drop cached sides that are no longer candidates.
+    for (const side of [...this._lastBySide.keys()]) {
+      if (!candidates.some((c) => c.side === side)) this._lastBySide.delete(side);
+    }
+
+    // On CPU single-hand frames, merge the other hand from cache if still visible.
+    const merged = this.backend === 'wasm' ? this.#mergeWithCache(hands, candidates) : hands;
+
     this.lastInferMs = totalMs;
-    return { hands, inferMs: totalMs };
+    return { hands: merged, inferMs: totalMs };
+  }
+
+  #cachedHands(candidates) {
+    return candidates
+      .map((c) => this._lastBySide.get(c.side))
+      .filter(Boolean);
+  }
+
+  #mergeWithCache(fresh, candidates) {
+    const bySide = new Map(fresh.map((h) => [h.side, h]));
+    for (const c of candidates) {
+      if (!bySide.has(c.side) && this._lastBySide.has(c.side)) {
+        bySide.set(c.side, this._lastBySide.get(c.side));
+      }
+    }
+    return [...bySide.values()];
+  }
+
+  #inFrame(p) {
+    const m = HANDS.frameMargin;
+    return p.x >= m && p.x <= 1 - m && p.y >= m && p.y <= 1 - m;
   }
 
   #candidatesFromPose(pose) {
@@ -165,9 +212,10 @@ export class HandDetector {
       },
     ];
     return sides.filter((s) =>
-      s.wrist?.visibility >= WRIST_VIS_MIN &&
-      s.index?.visibility >= WRIST_VIS_MIN * 0.5 &&
-      s.pinky?.visibility >= WRIST_VIS_MIN * 0.5
+      s.wrist?.visibility >= HANDS.wristVisMin &&
+      s.index?.visibility >= HANDS.wristVisMin * 0.5 &&
+      s.pinky?.visibility >= HANDS.wristVisMin * 0.5 &&
+      this.#inFrame(s.wrist)
     ).sort((a, b) => b.wrist.visibility - a.wrist.visibility);
   }
 
@@ -217,8 +265,7 @@ export class HandDetector {
     const sin = Math.sin(roi.angle);
     const out = [];
     for (let i = 0; i < NUM_HAND_LANDMARKS; i++) {
-      // Raw model output is in crop pixel space [0..inputW].
-      const px = raw[i * 3 + 0] / this.inputW; // 0..1 in crop
+      const px = raw[i * 3 + 0] / this.inputW;
       const py = raw[i * 3 + 1] / this.inputH;
       const pz = raw[i * 3 + 2] / this.inputW;
       const lx = (px - 0.5) * roi.size;

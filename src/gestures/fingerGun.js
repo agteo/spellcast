@@ -3,9 +3,11 @@
 
 import { HAND_LM } from '../hands/landmarks.js';
 import { dist2, fingerCurled, fingerExtended } from './geometry.js';
+import { GESTURE } from './thresholds.js';
 
 export const GESTURE_ID = 'fingerGun';
 
+const T = GESTURE.fingerGun;
 const armed = new Map();
 
 function gunPose(lms) {
@@ -35,13 +37,13 @@ export function update(_pose, hands) {
     const thumbSpread = dist2(lms[HAND_LM.THUMB_TIP], lms[HAND_LM.INDEX_MCP]) / palm;
     const state = armed.get(key) || { ready: false };
 
-    if (thumbSpread > 0.9) {
+    if (thumbSpread > T.thumbArmMin) {
       state.ready = true;
       armed.set(key, state);
       continue;
     }
 
-    if (state.ready && thumbSpread < 0.62) {
+    if (state.ready && thumbSpread < T.thumbFireMax) {
       armed.delete(key);
       const indexMcp = lms[HAND_LM.INDEX_MCP];
       const indexTip = lms[HAND_LM.INDEX_TIP];
@@ -57,7 +59,7 @@ export function update(_pose, hands) {
         },
         _enter: true,
         _instant: true,
-        _cooldown: 0.8,
+        _cooldown: T.cooldown,
       };
     }
     armed.set(key, state);

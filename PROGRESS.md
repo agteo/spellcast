@@ -4,7 +4,7 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 
 **Repo:** https://github.com/agteo/spellcast (public)  
 **Last updated:** 2026-07-19  
-**Current phase:** 7 — Share (finishing) → next: 8 — Polish
+**Current phase:** 8 — Polish (complete)
 
 ## Status legend
 
@@ -67,7 +67,9 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 
 ### Phase 8 — Polish
 
-- [ ] Threshold tuning; CPU hand-infer throttle; README
+- [x] Centralize thresholds in `src/gestures/thresholds.js`
+- [x] Skip offscreen wrists; CPU every-other-frame + ≤1 hand/infer with cache merge
+- [x] Public README: gestures table, features, tunables tip
 
 ## Public-repo hygiene (do not commit)
 
@@ -79,16 +81,10 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 ## Notes / decisions
 
 - Vendored from https://github.com/andrisgauracs/LiteRT.js-Mocap (see ATTRIBUTION.md).
-- Hand ROIs from pose wrist/index/pinky; CPU alternates one hand/frame.
-- Finger heart: tip proximity + curled other fingers; hearts in Three.js stage.
-- Strange circle: index+middle tips together & extended for whole trail; Kåsa fit; ≥300° sweep; world-anchored ring + UnrealBloomPass; ~2.8s cooldown.
-- Torso fix: pelvis/chest basis now gated on all four torso landmarks + minimum spine length, relaxing to bind pose otherwise — face-only framing no longer pitches the character face-down.
-- Spellbot re-skin: per-material PBR overrides in `characters.js` (teal emissive core, dark slate shell, violet accents) applied at load in `scene.js`; violet rim light + grid.
-- Phase 4 gestures remain deterministic: dab uses face-to-elbow + opposite straight arm; arms-V uses both wrists above the head; finger gun arms on thumb-up and fires on thumb drop.
-- Unlock discovery is session-only; no identity, storage, or backend.
-- Ghost replay: Save take snapshots `litert-mocap/1` frames in memory; Ghost loads a translucent offset clone of the take's character and loops bone rotations.
-- Custom characters: dropped Mixamo-style `.glb` files get a runtime bone map; non-matching rigs toast missing roles and suggest a `characters.js` entry.
-- Share: Clip composites camera+overlay with the bloom stage into a local WebM; Share card is an offline PNG of unlocks + best combo (4.5s window).
+- Hand ROIs from pose wrist/index/pinky; CPU alternates one hand/frame + stride-2; offscreen wrists skip infer.
+- Tunables live in `src/gestures/thresholds.js`.
+- Ghost / custom GLB / share features are local-only (no backend).
+- Face/torso mapping in close face-only framing remains a known limitation — prefer shoulders-to-hips framing.
 
 ## Blockers
 
