@@ -17,9 +17,12 @@ build/
 .vite/
 *.local
 
-# Model / asset caches (re-downloadable; keep repo lean)
+# LiteRT Wasm copied from node_modules at setup time
+public/litert-wasm/
+
+# Local model downloads outside the shipped pose model
 *.tflite
-!assets/**/*.tflite
+!public/models/*.tflite
 
 # OS / editor
 .DS_Store

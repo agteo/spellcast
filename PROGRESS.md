@@ -4,7 +4,7 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 
 **Repo:** https://github.com/agteo/spellcast (public)  
 **Last updated:** 2026-07-19  
-**Current phase:** 0 — Bootstrap
+**Current phase:** 1 — Hand tracking
 
 ## Status legend
 
@@ -15,10 +15,11 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 ### Phase 0 — Bootstrap
 
 - [x] Init git, add public remote `agteo/spellcast`
-- [ ] Clone / vendor LiteRT.js-Mocap base (Apache-compatible attribution)
-- [ ] Verify WebGPU path locally
-- [x] Add `.gitignore` (node_modules, .env*, local models cache if needed, OS junk)
+- [x] Clone / vendor LiteRT.js-Mocap base (Apache-compatible attribution)
+- [x] Verify WebGPU path locally (`isWebGPUSupported` + default `webgpu` compile; `npm run build` OK — confirm HUD in Chrome)
+- [x] Add `.gitignore` (node_modules, .env*, litert-wasm copy, OS junk; allow shipped `public/models/*.tflite`)
 - [x] First push: SPEC + PROGRESS + README — no private paths/secrets
+- [x] Vendor push: base app tree + attribution + package rename
 
 ### Phase 1 — Hand tracking
 
@@ -67,7 +68,9 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 
 ## Notes / decisions
 
-- _(empty — add as we go)_
+- Vendored from https://github.com/andrisgauracs/LiteRT.js-Mocap (see ATTRIBUTION.md).
+- Package name set to `spellcast` (`0.1.0`); base scripts (`dev` / `build` / Wasm copy) unchanged.
+- Shipped BlazePose `.tflite` and character `.glb` files are intentionally tracked.
 
 ## Blockers
 
