@@ -131,6 +131,75 @@ button.recording {
 #scene-wrap { position: absolute; inset: 0; }
 #scene-wrap canvas { display: block; }
 
+/* ---- Gesture discovery panel ---- */
+#unlock-panel {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 6;
+  width: 174px;
+  padding: 10px;
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  border-radius: 10px;
+  background: rgba(11, 14, 19, 0.82);
+  backdrop-filter: blur(8px);
+  font-family: var(--mono);
+}
+.unlock-heading {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  color: var(--text-dim);
+  font-size: 9px;
+  letter-spacing: 1.3px;
+}
+#unlock-count { color: #a78bfa; }
+#unlock-grid { display: grid; gap: 5px; }
+.unlock-item {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  align-items: center;
+  gap: 7px;
+  color: #475569;
+  opacity: 0.58;
+  transition: color 0.25s, opacity 0.25s, text-shadow 0.25s;
+}
+.unlock-icon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid #334155;
+  border-radius: 50%;
+  font-size: 13px;
+}
+.unlock-label { font-size: 10px; }
+.unlock-item.unlocked {
+  color: #f8fafc;
+  opacity: 1;
+  text-shadow: 0 0 10px #8b5cf6;
+}
+.unlock-item.unlocked .unlock-icon {
+  color: #f5d0fe;
+  border-color: #8b5cf6;
+  background: rgba(124, 58, 237, 0.22);
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.45);
+}
+
+.effect-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background: white;
+  opacity: 0;
+}
+.effect-flash.active { animation: spell-flash 420ms ease-out; }
+@keyframes spell-flash {
+  0% { opacity: 0.82; }
+  100% { opacity: 0; }
+}
+
 /* ---- Performance HUD (big + legible for screen recording) ---- */
 #hud {
   position: absolute;

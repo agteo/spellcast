@@ -17,6 +17,7 @@ import { mirrorLandmarks, extendLandmarks, NUM_LANDMARKS } from './pose/landmark
 import { HandDetector } from './hands/detector.js';
 import { NUM_HAND_LANDMARKS } from './hands/landmarks.js';
 import { GestureEngine } from './gestures/index.js';
+import { UnlockTracker } from './gestures/unlocks.js';
 import { EffectsEngine } from './effects/engine.js';
 import { Retargeter } from './retarget/retarget.js';
 import { CHARACTERS, DEFAULT_CHARACTER } from './retarget/characters.js';
@@ -57,6 +58,7 @@ const state = {
 
 const hud = new Hud();
 const recorder = new SessionRecorder();
+const unlockTracker = new UnlockTracker(document.getElementById('unlock-grid'));
 // Debug handle (also handy on camera: poke the pipeline from DevTools).
 window.__mocap = state;
 window.__mocap.recorder = recorder;
@@ -204,8 +206,16 @@ function startInferenceLoop() {
           const events = state.gestures.update(screen, hands, dt);
           for (const ev of events) {
             state.effects.spawn(ev);
-            if (ev.gesture === 'fingerHeart') toast('♥ Finger heart!', 1200);
-            if (ev.gesture === 'strangeCircle') toast('✧ Strange circle!', 1600);
+            const firstUnlock = unlockTracker.unlock(ev.gesture);
+            const messages = {
+              fingerHeart: '♥ Finger heart!',
+              strangeCircle: '✧ Strange circle!',
+              dab: '✦ Dab!',
+              armsV: '☀ Arms V!',
+              fingerGun: '⌁ Finger gun!',
+            };
+            const message = messages[ev.gesture];
+            if (message) toast(firstUnlock ? `${message} Unlocked` : message, 1600);
           }
         }
       } catch (err) {

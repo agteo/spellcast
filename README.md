@@ -2,7 +2,7 @@
 
 Gesture-unlocked visual effects on browser motion capture.
 
-Spellcast builds on [LiteRT.js-Mocap](https://github.com/andrisgauracs/LiteRT.js-Mocap): BlazePose body tracking plus (planned) a second LiteRT hand-landmark model, rule-based gesture recognition, and Three.js effects. Move your body and hands to unlock effects — a Korean finger heart, a Doctor Strange–style sparking ring, and more.
+Spellcast builds on [LiteRT.js-Mocap](https://github.com/andrisgauracs/LiteRT.js-Mocap): BlazePose body tracking plus a second LiteRT hand-landmark model, rule-based gesture recognition, and Three.js effects. Move your body and hands to unlock effects — a Korean finger heart, a Doctor Strange–style sparking ring, and more.
 
 ## Quick start
 
@@ -15,7 +15,7 @@ Use Chrome (or another WebGPU browser) for the fast path. The app detects missin
 
 ## Status
 
-**Phase 3 — Strange circle:** draw a circle with index+middle fingers to conjure a sparking orange portal (bloom + embers).
+**Phase 4 — Launch gestures:** finger heart, Strange circle, dab, arms-V, and finger gun now unlock their effects and light up the session discovery panel.
 
 See [SPEC.md](./SPEC.md) for the product contract and [PROGRESS.md](./PROGRESS.md) for the phased build tracker.
 

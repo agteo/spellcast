@@ -8,6 +8,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { makeHeartMaterials } from './sprites.js';
 import { StrangeRing } from './ring.js';
 import { createEmberBurst } from './particles.js';
+import { ConfettiBurst, GoldenRain, FingerGunShot } from './celebrations.js';
 
 /**
  * Map normalized camera-space hand coords into the Three.js stage.
@@ -93,6 +94,9 @@ export class EffectsEngine {
     this.heartMats = makeHeartMaterials();
     this.active = [];
     this.mirror = true;
+    this.flash = document.createElement('div');
+    this.flash.className = 'effect-flash';
+    stage.container.appendChild(this.flash);
 
     const size = new THREE.Vector2();
     stage.renderer.getSize(size);
@@ -130,6 +134,25 @@ export class EffectsEngine {
       const center = screenToStage(event.position, this.mirror);
       const radius = screenRadiusToStage(event.radius ?? 0.12);
       this.active.push(new StrangeRing(this.root, center, radius, createEmberBurst));
+      return;
+    }
+    if (event.gesture === 'dab') {
+      this.active.push(new ConfettiBurst(this.root, screenToStage(event.position, this.mirror)));
+      this.flash.classList.remove('active');
+      requestAnimationFrame(() => this.flash.classList.add('active'));
+      return;
+    }
+    if (event.gesture === 'armsV') {
+      this.active.push(new GoldenRain(this.root));
+      return;
+    }
+    if (event.gesture === 'fingerGun') {
+      const origin = screenToStage(event.position, this.mirror);
+      const dir = event.direction || { x: 1, y: 0 };
+      this.active.push(new FingerGunShot(this.root, origin, {
+        x: this.mirror ? -dir.x : dir.x,
+        y: -dir.y,
+      }));
     }
   }
 
@@ -155,6 +178,7 @@ export class EffectsEngine {
       m.dispose();
     }
     this.stage.scene.remove(this.root);
+    this.flash.remove();
     this.composer?.dispose();
   }
 }

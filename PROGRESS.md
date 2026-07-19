@@ -4,7 +4,7 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 
 **Repo:** https://github.com/agteo/spellcast (public)  
 **Last updated:** 2026-07-19  
-**Current phase:** 3 — Strange circle (finishing) → next: 4 — Remaining gestures + unlock panel
+**Current phase:** 4 — Remaining gestures + unlock panel (finishing) → next: 5 — Ghost replay
 
 ## Status legend
 
@@ -42,8 +42,10 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 
 ### Phase 4 — Remaining gestures + unlock panel
 
-- [ ] dab, armsV, fingerGun
-- [ ] Unlock side panel
+- [x] dab, armsV, fingerGun recognizers
+- [x] Screen flash + confetti, golden rain, muzzle projectile/trail
+- [x] Session unlock side panel (all five launch gestures)
+- [ ] Confirm thresholds and effects in Chrome
 
 ### Phase 5 — Ghost replay
 
@@ -76,7 +78,9 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 - Strange circle: index+middle tips together & extended for whole trail; Kåsa fit; ≥300° sweep; world-anchored ring + UnrealBloomPass; ~2.8s cooldown.
 - Torso fix: pelvis/chest basis now gated on all four torso landmarks + minimum spine length, relaxing to bind pose otherwise — face-only framing no longer pitches the character face-down.
 - Spellbot re-skin: per-material PBR overrides in `characters.js` (teal emissive core, dark slate shell, violet accents) applied at load in `scene.js`; violet rim light + grid.
+- Phase 4 gestures remain deterministic: dab uses face-to-elbow + opposite straight arm; arms-V uses both wrists above the head; finger gun arms on thumb-up and fires on thumb drop.
+- Unlock discovery is session-only; no identity, storage, or backend.
 
 ## Blockers
 
-- _(none)_
+- Face/torso mapping is still unreliable in close face-only framing. Deferred for focused retargeting diagnosis; use shoulders-to-hips framing for gesture testing.

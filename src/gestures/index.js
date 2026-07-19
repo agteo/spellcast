@@ -4,8 +4,11 @@
 
 import * as fingerHeart from './fingerHeart.js';
 import * as strangeCircle from './strangeCircle.js';
+import * as dab from './dab.js';
+import * as armsV from './armsV.js';
+import * as fingerGun from './fingerGun.js';
 
-const RECOGNIZERS = [fingerHeart, strangeCircle];
+const RECOGNIZERS = [fingerHeart, strangeCircle, dab, armsV, fingerGun];
 
 /**
  * Tracks enter/exit with hysteresis and enforces cooldowns so a held pose
