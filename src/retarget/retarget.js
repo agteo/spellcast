@@ -92,21 +92,34 @@ const GROUP_DISENGAGE = 0.45;
 // (the eye-vs-ear-line offset varies per person; see the head basis in 4c).
 const HEAD_PITCH_CALIB_FRAMES = 45;
 
-// Landmarks that identify each leg. Knee + ankle are the honest "is this leg
-// actually in frame" signal — hips stay visible in a face-to-hips framing.
-const LEG_GROUPS = {
-  left: [LM.LEFT_KNEE, LM.LEFT_ANKLE],
-  right: [LM.RIGHT_KNEE, LM.RIGHT_ANKLE],
+// Limb groups: a whole limb engages/disengages together based on the probe
+// landmarks' visibility (EMA + hysteresis). Combine modes:
+//   'avg' — legs: knee and ankle leave the frame together, the average is a
+//           stable signal.
+//   'min' — arms: BlazePose routinely paints a PHANTOM elbow *inside* the
+//           frame with a high visibility score while the real arm hangs out
+//           of view (the wrist, predicted offscreen, gets its visibility
+//           capped upstream). Averaging would let that phantom elbow hold
+//           the arm engaged — the min can't be fooled by one confident guess.
+const GROUP_DEFS = {
+  leftLeg: { probe: [LM.LEFT_KNEE, LM.LEFT_ANKLE], combine: 'avg' },
+  rightLeg: { probe: [LM.RIGHT_KNEE, LM.RIGHT_ANKLE], combine: 'avg' },
+  leftArm: { probe: [LM.LEFT_ELBOW, LM.LEFT_WRIST], combine: 'min' },
+  rightArm: { probe: [LM.RIGHT_ELBOW, LM.RIGHT_WRIST], combine: 'min' },
 };
-const LEG_LANDMARKS = {
-  left: new Set([LM.LEFT_KNEE, LM.LEFT_ANKLE, LM.LEFT_HEEL, LM.LEFT_FOOT_INDEX]),
-  right: new Set([LM.RIGHT_KNEE, LM.RIGHT_ANKLE, LM.RIGHT_HEEL, LM.RIGHT_FOOT_INDEX]),
+// Every landmark that belongs to a group: any driver reading one of these is
+// gated by that group's engaged state.
+const GROUP_LANDMARKS = {
+  leftLeg: new Set([LM.LEFT_KNEE, LM.LEFT_ANKLE, LM.LEFT_HEEL, LM.LEFT_FOOT_INDEX]),
+  rightLeg: new Set([LM.RIGHT_KNEE, LM.RIGHT_ANKLE, LM.RIGHT_HEEL, LM.RIGHT_FOOT_INDEX]),
+  leftArm: new Set([LM.LEFT_ELBOW, LM.LEFT_WRIST, LM.LEFT_PINKY, LM.LEFT_INDEX, LM.LEFT_THUMB]),
+  rightArm: new Set([LM.RIGHT_ELBOW, LM.RIGHT_WRIST, LM.RIGHT_PINKY, LM.RIGHT_INDEX, LM.RIGHT_THUMB]),
 };
 
-/** Which leg group (if any) a driver belongs to, from the landmarks it reads. */
-function legGroupOf(...landmarkIndices) {
-  for (const side of ['left', 'right']) {
-    if (landmarkIndices.some((i) => LEG_LANDMARKS[side].has(i))) return side;
+/** Which limb group (if any) a driver belongs to, from the landmarks it reads. */
+function groupOf(...landmarkIndices) {
+  for (const key of Object.keys(GROUP_LANDMARKS)) {
+    if (landmarkIndices.some((i) => GROUP_LANDMARKS[key].has(i))) return key;
   }
   return null;
 }
@@ -161,7 +174,7 @@ export class Retargeter {
         bone,
         from: LM[seg.from],
         to: LM[seg.to],
-        group: legGroupOf(LM[seg.from], LM[seg.to]),
+        group: groupOf(LM[seg.from], LM[seg.to]),
         restDir,                              // which way the bone points, in bone space
         restQuat: bone.quaternion.clone(),    // bind-pose local rotation (keeps twist)
         depth: this.#depth(bone),
@@ -226,12 +239,12 @@ export class Retargeter {
     // and the arms, so interleaving matters.
     this.drivers = [...this.basisJoints, ...this.segments].sort((a, b) => a.depth - b.depth);
 
-    // Limb-group tracking state. Groups start disengaged: legs only start
-    // being driven once they're confidently in frame.
-    this.groups = {
-      left: { landmarks: LEG_GROUPS.left, ema: 0, active: false },
-      right: { landmarks: LEG_GROUPS.right, ema: 0, active: false },
-    };
+    // Limb-group tracking state. Groups start disengaged: a limb only starts
+    // being driven once it's confidently in frame.
+    this.groups = {};
+    for (const [key, def] of Object.entries(GROUP_DEFS)) {
+      this.groups[key] = { landmarks: def.probe, combine: def.combine, ema: 0, active: false };
+    }
 
     // --- Position-driven bones (IK-style rigs, e.g. RobotExpressive's feet).
     //
@@ -256,7 +269,7 @@ export class Retargeter {
         this.positionBones.push({
           bone,
           landmark: LM[pb.landmark],
-          group: legGroupOf(LM[pb.landmark]),
+          group: groupOf(LM[pb.landmark]),
           restPos: bone.position.clone(),
           bindWorldPos: bone.getWorldPosition(V()),
           restLandmark: null, // captured at calibration
@@ -314,11 +327,15 @@ export class Retargeter {
     // A typical webcam shot is face-to-hips: the model still *predicts* leg
     // landmarks (extrapolated, low visibility), so we decide per LEG, from a
     // smoothed knee+ankle visibility with hysteresis, whether that leg is
-    // really in frame. Engaged → leg tracks; disengaged → leg eases back to
-    // its bind stance and only the upper body is driven.
+    // really in frame. Engaged → limb tracks; disengaged → limb eases back
+    // to its bind stance. Arms get the same treatment (min-combined, see
+    // GROUP_DEFS) so a phantom in-frame elbow can't wave a missing arm.
     const gAlpha = 1 - Math.exp(-8 * dt);
     for (const g of Object.values(this.groups)) {
-      const v = g.landmarks.reduce((sum, i) => sum + vis[i], 0) / g.landmarks.length;
+      const v =
+        g.combine === 'min'
+          ? Math.min(...g.landmarks.map((i) => vis[i]))
+          : g.landmarks.reduce((sum, i) => sum + vis[i], 0) / g.landmarks.length;
       g.ema += (v - g.ema) * gAlpha;
       if (g.active) {
         if (g.ema < GROUP_DISENGAGE) g.active = false;
@@ -527,7 +544,7 @@ export class Retargeter {
       // landmarks can never produce a garbage scale.
       if (this.mpToCharScale === null && this.charLegLength) {
         const legOk =
-          this.groups.left.active &&
+          this.groups.leftLeg.active &&
           [LM.LEFT_HIP, LM.LEFT_KNEE, LM.LEFT_ANKLE].every(
             (i) => vis[i] > VISIBILITY_THRESHOLD
           );
@@ -606,8 +623,8 @@ export class Retargeter {
    */
   get trackingMode() {
     if (this.framing === 'chest') return 'CHEST-UP';
-    const l = this.groups.left.active;
-    const r = this.groups.right.active;
+    const l = this.groups.leftLeg.active;
+    const r = this.groups.rightLeg.active;
     if (l && r) return 'FULL BODY';
     if (l || r) return 'PARTIAL';
     return 'UPPER BODY';
