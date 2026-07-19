@@ -13,7 +13,7 @@
 
 import { PoseDetector } from './pose/detector.js';
 import { LandmarkSmoother } from './pose/smoothing.js';
-import { mirrorLandmarks, extendLandmarks, NUM_LANDMARKS } from './pose/landmarks.js';
+import { mirrorLandmarks, extendLandmarks, NUM_LANDMARKS, LM } from './pose/landmarks.js';
 import { HandDetector } from './hands/detector.js';
 import { NUM_HAND_LANDMARKS } from './hands/landmarks.js';
 import { GestureEngine } from './gestures/index.js';
@@ -281,6 +281,56 @@ function startInferenceLoop() {
   })();
 }
 
+// ---------------------------------------------------------------------------
+// Framing hint — coach the user toward a framing the tracker can work with.
+// Uses screen-landmark visibilities, which the inference loop caps for
+// offscreen points, so "not visible" reliably means "not usable".
+// ---------------------------------------------------------------------------
+
+const HINT_VIS = 0.55;          // same bar the retargeter/gestures use
+const HINT_SHOW_MS = 1500;      // condition must hold this long before showing
+const HINT_CLEAR_MS = 500;      // and be resolved this long before hiding
+let hintCandidate = null;
+let hintSince = 0;
+
+function computeFramingHint() {
+  const lms = state.latest?.screen;
+  if (!lms) return null;
+  const seen = (i) => lms[i].visibility >= HINT_VIS;
+
+  const face = seen(LM.NOSE) || (seen(LM.LEFT_EYE) && seen(LM.RIGHT_EYE));
+  if (!face) return null; // nobody (or no face) in frame — nothing to coach
+
+  const shoulders = seen(LM.LEFT_SHOULDER) && seen(LM.RIGHT_SHOULDER);
+  if (!shoulders) return 'Step back — shoulders out of frame, body tracking off';
+
+  const hips = seen(LM.LEFT_HIP) && seen(LM.RIGHT_HIP);
+  if (state.framing === 'full' && !hips) {
+    return 'Full-torso framing needs hips in frame — step back or switch to Chest-up';
+  }
+
+  const anyWrist = seen(LM.LEFT_WRIST) || seen(LM.RIGHT_WRIST);
+  if (!anyWrist) return 'Hands out of frame — keep wrists visible for hand gestures';
+
+  return null;
+}
+
+function updateFramingHint(now, fresh) {
+  const next = fresh ? computeFramingHint() : null;
+  if (next !== hintCandidate) {
+    hintCandidate = next;
+    hintSince = now;
+  }
+  // Debounce both ways so a landmark flickering at the frame edge (or a hand
+  // dropping for a beat mid-gesture) doesn't strobe the hint.
+  const held = now - hintSince;
+  if (hintCandidate === null) {
+    if (held > HINT_CLEAR_MS) hud.setHint(null);
+  } else if (held > HINT_SHOW_MS) {
+    hud.setHint(hintCandidate);
+  }
+}
+
 function startRenderLoop() {
   const overlay = new Overlay(els.overlay, els.video);
   const loop = (now) => {
@@ -306,6 +356,8 @@ function startRenderLoop() {
       fresh ? state.latest.screen : null,
       fresh ? state.latest.hands : null,
     );
+
+    updateFramingHint(now, fresh);
 
     if (recorder.recording && fresh) {
       recorder.capture(state.latest.worldExtended, state.latest.score);

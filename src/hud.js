@@ -9,11 +9,13 @@ export class Hud {
     this.inferHandsEl = document.getElementById('hud-infer-hands');
     this.backendEl = document.getElementById('hud-backend');
     this.trackEl = document.getElementById('hud-track');
+    this.hintEl = document.getElementById('framing-hint');
     this.fps = 0;
     this.inferMs = 0;
     this.inferHandsMs = 0;
     this.lastDraw = 0;
     this.trackMode = '–';
+    this.hint = null;
   }
 
   tickFrame(dt) {
@@ -40,6 +42,14 @@ export class Hud {
     if (mode === this.trackMode) return;
     this.trackMode = mode;
     this.trackEl.textContent = mode;
+  }
+
+  /** Framing coaching hint over the camera view (null hides it). */
+  setHint(text) {
+    if (text === this.hint || !this.hintEl) return;
+    this.hint = text;
+    this.hintEl.textContent = text || '';
+    this.hintEl.classList.toggle('hidden', !text);
   }
 
   /** Refresh the DOM at ~5 Hz — enough to feel live, stable enough to read. */

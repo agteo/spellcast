@@ -307,6 +307,25 @@ button.clipping {
 }
 #toast.hidden { opacity: 0; pointer-events: none; }
 
+/* Framing coaching hint — floats near the bottom of the camera view. */
+#framing-hint {
+  position: absolute;
+  bottom: 14px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  background: rgba(11, 14, 19, 0.82);
+  border: 1px solid rgba(20, 184, 166, 0.55);
+  color: var(--text);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+#framing-hint.hidden { opacity: 0; }
+
 .control.file input[type="file"] {
   max-width: 148px;
   font-size: 11px;
@@ -338,6 +357,7 @@ button.clipping {
 .hidden { display: none !important; }
 #status-layer.hidden { display: flex !important; }
 #toast.hidden { display: block !important; }
+#framing-hint.hidden { display: block !important; }
 
 @media (max-width: 900px) {
   #stage { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
