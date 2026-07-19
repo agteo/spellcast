@@ -106,10 +106,16 @@ export class Retargeter {
   /**
    * @param {THREE.Object3D} characterRoot loaded (and already scaled) character
    * @param {object} config a CHARACTERS entry from characters.js
+   * @param {{ framing?: 'full' | 'chest' }} [opts]
    */
-  constructor(characterRoot, config) {
+  constructor(characterRoot, config, { framing = 'full' } = {}) {
     this.root = characterRoot;
     this.config = config;
+    // 'full'  — torso needs hips AND shoulders in frame (most faithful).
+    // 'chest' — torso driven from the shoulder line alone, assuming the
+    //           spine is roughly vertical (gravity up). For chest-up webcam
+    //           framing where the hips never score visible.
+    this.framing = framing;
     this.bones = new Map();
     characterRoot.updateWorldMatrix(true, true);
     characterRoot.traverse((n) => this.bones.set(sanitize(n.name), n));
@@ -166,6 +172,7 @@ export class Retargeter {
       if (!bone) continue;
       this.basisJoints.push({
         type: 'basis',
+        key,
         bone,
         left: lmA,
         right: lmB,
@@ -232,6 +239,11 @@ export class Retargeter {
     }
   }
 
+  /** Switch framing mode: 'full' (hips required) or 'chest' (shoulders only). */
+  setFraming(mode) {
+    this.framing = mode;
+  }
+
   /** Forget the position-bone calibration (call when mirroring flips). */
   resetCalibration() {
     this.mpToCharScale = null;
@@ -290,43 +302,76 @@ export class Retargeter {
         continue;
       }
       if (d.type === 'basis') {
-        // --- 4. Full-basis joint (pelvis / chest).
-        // The basis needs BOTH the hip line and the shoulder line to be
-        // trustworthy: `up` is NECK−HIP_CENTER, so extrapolated out-of-frame
-        // hips poison the pelvis AND chest even when shoulders are visible
-        // (face-only framing pitched the whole character face-down). Gate on
-        // all four torso landmarks and RELAX to bind pose instead of
-        // freezing, so a bad frame can't lock the torso in a bent-over pose.
-        const torsoVisible =
-          vis[d.left] >= VISIBILITY_THRESHOLD &&
-          vis[d.right] >= VISIBILITY_THRESHOLD &&
-          vis[LM.LEFT_HIP] >= VISIBILITY_THRESHOLD &&
-          vis[LM.RIGHT_HIP] >= VISIBILITY_THRESHOLD &&
-          vis[LM.LEFT_SHOULDER] >= VISIBILITY_THRESHOLD &&
-          vis[LM.RIGHT_SHOULDER] >= VISIBILITY_THRESHOLD;
-        if (!torsoVisible) {
+        const chestFraming = this.framing === 'chest';
+
+        // Chest-up framing has no hip data at all — the pelvis stays in its
+        // bind stance and the chest carries the whole torso orientation.
+        if (chestFraming && d.key === 'pelvis') {
           d.bone.quaternion.slerp(d.restQuat, boneRelaxAlpha);
           continue;
         }
 
-        // Build the live body basis: left axis from the hip/shoulder line,
-        // up axis from the spine, forward = left × up (right-handed).
-        const left = pts[d.left].clone().sub(pts[d.right]).normalize();
-        const spine = pts[LM.NECK].clone().sub(pts[LM.HIP_CENTER]);
-        // Degenerate spine (hips guessed right under the shoulders) → the up
-        // axis is noise; ease back rather than aim the torso somewhere random.
-        if (spine.length() < 0.18) {
-          d.bone.quaternion.slerp(d.restQuat, boneRelaxAlpha);
-          continue;
-        }
-        const up = spine.normalize();
-        const forward = new THREE.Vector3().crossVectors(left, up).normalize();
-        if (forward.lengthSq() < 1e-8) continue;
-        // Re-orthogonalize left so the basis is exact.
-        const orthoLeft = new THREE.Vector3().crossVectors(up, forward).normalize();
+        let liveBasisQuat = null;
+        if (chestFraming) {
+          // --- 4b. Shoulder-only basis (chest-up framing).
+          // Only the shoulder line is trustworthy; the up axis is assumed to
+          // be gravity (person roughly upright — which is all a chest-up
+          // webcam framing can see anyway). Captures yaw (turning) and roll
+          // (leaning sideways); pitch (bowing) is invisible in this framing.
+          if (vis[d.left] < VISIBILITY_THRESHOLD || vis[d.right] < VISIBILITY_THRESHOLD) {
+            d.bone.quaternion.slerp(d.restQuat, boneRelaxAlpha);
+            continue;
+          }
+          const left = pts[d.left].clone().sub(pts[d.right]).normalize();
+          // Shoulders folded near-vertical → yaw/roll are unreadable noise.
+          if (Math.abs(left.y) > 0.9) {
+            d.bone.quaternion.slerp(d.restQuat, boneRelaxAlpha);
+            continue;
+          }
+          // Orthogonalize world-up against the shoulder line.
+          const up = new THREE.Vector3(0, 1, 0).addScaledVector(left, -left.y).normalize();
+          const forward = new THREE.Vector3().crossVectors(left, up).normalize();
+          const basis = new THREE.Matrix4().makeBasis(left, up, forward);
+          liveBasisQuat = Q().setFromRotationMatrix(basis);
+        } else {
+          // --- 4. Full-basis joint (pelvis / chest).
+          // The basis needs BOTH the hip line and the shoulder line to be
+          // trustworthy: `up` is NECK−HIP_CENTER, so extrapolated out-of-frame
+          // hips poison the pelvis AND chest even when shoulders are visible
+          // (face-only framing pitched the whole character face-down). Gate on
+          // all four torso landmarks and RELAX to bind pose instead of
+          // freezing, so a bad frame can't lock the torso in a bent-over pose.
+          const torsoVisible =
+            vis[d.left] >= VISIBILITY_THRESHOLD &&
+            vis[d.right] >= VISIBILITY_THRESHOLD &&
+            vis[LM.LEFT_HIP] >= VISIBILITY_THRESHOLD &&
+            vis[LM.RIGHT_HIP] >= VISIBILITY_THRESHOLD &&
+            vis[LM.LEFT_SHOULDER] >= VISIBILITY_THRESHOLD &&
+            vis[LM.RIGHT_SHOULDER] >= VISIBILITY_THRESHOLD;
+          if (!torsoVisible) {
+            d.bone.quaternion.slerp(d.restQuat, boneRelaxAlpha);
+            continue;
+          }
 
-        const basis = new THREE.Matrix4().makeBasis(orthoLeft, up, forward);
-        const liveBasisQuat = Q().setFromRotationMatrix(basis);
+          // Build the live body basis: left axis from the hip/shoulder line,
+          // up axis from the spine, forward = left × up (right-handed).
+          const left = pts[d.left].clone().sub(pts[d.right]).normalize();
+          const spine = pts[LM.NECK].clone().sub(pts[LM.HIP_CENTER]);
+          // Degenerate spine (hips guessed right under the shoulders) → the up
+          // axis is noise; ease back rather than aim the torso somewhere random.
+          if (spine.length() < 0.18) {
+            d.bone.quaternion.slerp(d.restQuat, boneRelaxAlpha);
+            continue;
+          }
+          const up = spine.normalize();
+          const forward = new THREE.Vector3().crossVectors(left, up).normalize();
+          if (forward.lengthSq() < 1e-8) continue;
+          // Re-orthogonalize left so the basis is exact.
+          const orthoLeft = new THREE.Vector3().crossVectors(up, forward).normalize();
+
+          const basis = new THREE.Matrix4().makeBasis(orthoLeft, up, forward);
+          liveBasisQuat = Q().setFromRotationMatrix(basis);
+        }
 
         // World target = live basis applied on top of the bind world rotation,
         // then converted into the bone's local space via its parent.
@@ -442,9 +487,11 @@ export class Retargeter {
 
   /**
    * What the limb gating is currently doing — for the HUD.
-   * 'FULL BODY' both legs tracked · 'PARTIAL' one leg · 'UPPER BODY' none.
+   * 'FULL BODY' both legs tracked · 'PARTIAL' one leg · 'UPPER BODY' none ·
+   * 'CHEST-UP' when chest-up framing mode is selected.
    */
   get trackingMode() {
+    if (this.framing === 'chest') return 'CHEST-UP';
     const l = this.groups.left.active;
     const r = this.groups.right.active;
     if (l && r) return 'FULL BODY';

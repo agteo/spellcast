@@ -39,6 +39,7 @@ const els = {
   backendSelect: document.getElementById('backend-select'),
   characterSelect: document.getElementById('character-select'),
   mirrorToggle: document.getElementById('mirror-toggle'),
+  framingSelect: document.getElementById('framing-select'),
   recordBtn: document.getElementById('record-btn'),
   saveTakeBtn: document.getElementById('save-take-btn'),
   ghostToggle: document.getElementById('ghost-toggle'),
@@ -64,7 +65,9 @@ const state = {
   customObjectUrls: [],
   characterKey: DEFAULT_CHARACTER,
   mirror: true,
+  framing: 'chest',      // 'chest' (shoulders only) | 'full' (hips required)
   latest: null,          // { screen, worldExtended, hands, score, receivedAt }
+  inferCycleMs: 0,       // EMA of time between pose publications (staleness window)
   lastRenderTime: 0,
   busy: false,           // guards backend/character switches
 };
@@ -164,7 +167,7 @@ async function compileBackend(backend, firstLoad = false) {
 async function loadCharacter(key) {
   const config = CHARACTERS[key];
   const root = await state.stage.loadCharacter(config);
-  state.retargeter = new Retargeter(root, config);
+  state.retargeter = new Retargeter(root, config, { framing: state.framing });
   state.characterKey = key;
 }
 
@@ -176,6 +179,7 @@ function startInferenceLoop() {
   const nextFrame = () => new Promise((r) => requestAnimationFrame(r));
   (async () => {
     let lastT = performance.now();
+    let lastPublish = 0;
     while (true) {
       await nextFrame();
       if (state.busy || !state.detector.model) continue;
@@ -188,7 +192,8 @@ function startInferenceLoop() {
 
         if (!result) {
           hud.tickHandsInference(0);
-          if (state.latest && now - state.latest.receivedAt > 600) state.latest = null;
+          const lostMs = Math.max(600, state.inferCycleMs * 2);
+          if (state.latest && now - state.latest.receivedAt > lostMs) state.latest = null;
           continue;
         }
 
@@ -197,6 +202,27 @@ function startInferenceLoop() {
         const screen = screenSmoother.apply(result.screen, dt);
         let world = worldSmoother.apply(result.world, dt);
         if (state.mirror) world = mirrorLandmarks(world, 0);
+
+        // Publish the pose IMMEDIATELY — the retargeter must not wait for
+        // hand inference (on CPU that wait backdated the freshness clock and
+        // the avatar kept relaxing toward rest between updates). Hands are
+        // merged into this frame below, once their inference finishes.
+        const frame = {
+          screen,
+          worldExtended: extendLandmarks(world),
+          hands: state.latest?.hands ?? [],
+          score: result.score,
+          receivedAt: now,
+        };
+        state.latest = frame;
+        // Publication cadence → the render loop's adaptive staleness window.
+        if (lastPublish) {
+          const cycle = now - lastPublish;
+          state.inferCycleMs = state.inferCycleMs
+            ? state.inferCycleMs * 0.8 + cycle * 0.2
+            : cycle;
+        }
+        lastPublish = now;
 
         // Hands: ROI from pose wrists at full video resolution.
         let hands = [];
@@ -210,15 +236,8 @@ function startInferenceLoop() {
               landmarks: smoother.apply(h.landmarks, dt),
             };
           });
+          if (state.latest === frame) frame.hands = hands;
         }
-
-        state.latest = {
-          screen,
-          worldExtended: extendLandmarks(world),
-          hands,
-          score: result.score,
-          receivedAt: now,
-        };
 
         // Gesture → effects (finger heart, …).
         if (state.gestures && state.effects) {
@@ -254,7 +273,12 @@ function startRenderLoop() {
     state.lastRenderTime = now;
     hud.tickFrame(dt);
 
-    const fresh = state.latest && now - state.latest.receivedAt < 500;
+    // "Fresh" scales with the measured inference cadence: on WebGPU this is
+    // the old 500 ms, but a slow CPU backend gets up to 2 s before the avatar
+    // is treated as tracking-lost and relaxed — it lags there, but it no
+    // longer sags to rest between every pair of results.
+    const staleMs = Math.min(2000, Math.max(500, state.inferCycleMs * 3));
+    const fresh = state.latest && now - state.latest.receivedAt < staleMs;
     if (state.retargeter) {
       if (fresh) state.retargeter.update(state.latest.worldExtended, dt);
       else state.retargeter.relax(dt); // tracking lost → ease back to rest pose
@@ -337,6 +361,18 @@ function setupControls() {
       state.busy = false;
       els.characterSelect.disabled = false;
     }
+  });
+
+  els.framingSelect.value = state.framing;
+  els.framingSelect.addEventListener('change', () => {
+    state.framing = els.framingSelect.value;
+    state.retargeter?.setFraming(state.framing);
+    toast(
+      state.framing === 'chest'
+        ? 'Chest-up framing: torso follows your shoulders — no hips needed.'
+        : 'Full-torso framing: keep shoulders-to-hips in frame.',
+      3500,
+    );
   });
 
   els.mirrorToggle.addEventListener('change', () => {

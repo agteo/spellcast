@@ -13,7 +13,7 @@ npm run dev        # → http://localhost:5173
 
 Use **Chrome** (or another WebGPU browser) for the fast path. Missing WebGPU falls back to CPU (Wasm) automatically.
 
-**Tip:** stand so shoulders-to-hips are in frame for the cleanest character retargeting. Hands need to be visible for hand gestures.
+**Tip:** pick the **Framing** mode that matches your camera: *Chest-up* (default) drives the torso from your shoulders alone — ideal at a desk; *Full torso* uses hips + shoulders for the most faithful leaning and turning, so stand with shoulders-to-hips in frame. Hands need to be visible for hand gestures.
 
 ## Gestures
 
