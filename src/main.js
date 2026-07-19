@@ -16,6 +16,8 @@ import { LandmarkSmoother } from './pose/smoothing.js';
 import { mirrorLandmarks, extendLandmarks, NUM_LANDMARKS } from './pose/landmarks.js';
 import { HandDetector } from './hands/detector.js';
 import { NUM_HAND_LANDMARKS } from './hands/landmarks.js';
+import { GestureEngine } from './gestures/index.js';
+import { EffectsEngine } from './effects/engine.js';
 import { Retargeter } from './retarget/retarget.js';
 import { CHARACTERS, DEFAULT_CHARACTER } from './retarget/characters.js';
 import { Stage } from './scene.js';
@@ -42,6 +44,8 @@ const els = {
 const state = {
   detector: null,
   hands: null,
+  gestures: null,
+  effects: null,
   stage: null,
   retargeter: null,
   characterKey: DEFAULT_CHARACTER,
@@ -97,6 +101,9 @@ async function boot() {
 
   // 3. Compile pose + hand models and load the character in parallel.
   state.stage = new Stage(els.sceneWrap);
+  state.gestures = new GestureEngine();
+  state.effects = new EffectsEngine(state.stage);
+  state.effects.setMirror(state.mirror);
   const compilePromise = compileBackend(backend, true);
   const characterPromise = loadCharacter(state.characterKey);
   await Promise.all([compilePromise, characterPromise]);
@@ -191,6 +198,17 @@ function startInferenceLoop() {
           score: result.score,
           receivedAt: now,
         };
+
+        // Gesture → effects (finger heart, …).
+        if (state.gestures && state.effects) {
+          const events = state.gestures.update(screen, hands, dt);
+          for (const ev of events) {
+            state.effects.spawn(ev);
+            if (ev.gesture === 'fingerHeart') {
+              toast('♥ Finger heart!', 1200);
+            }
+          }
+        }
       } catch (err) {
         console.error('Inference error:', err);
         toast(`Inference error: ${err.message}`, 5000);
@@ -225,6 +243,8 @@ function startRenderLoop() {
       recorder.capture(state.latest.worldExtended, state.latest.score);
       els.recFrames.textContent = recorder.frameCount;
     }
+
+    if (state.effects) state.effects.update(dt);
 
     state.stage.render();
     hud.draw(now);
@@ -285,6 +305,7 @@ function setupControls() {
   els.mirrorToggle.addEventListener('change', () => {
     state.mirror = els.mirrorToggle.checked;
     applyMirrorClass();
+    state.effects?.setMirror(state.mirror);
     // Mirrored landmarks flip sides — position-driven bones must recalibrate.
     state.retargeter?.resetCalibration();
   });

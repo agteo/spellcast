@@ -15,7 +15,7 @@ Use Chrome (or another WebGPU browser) for the fast path. The app detects missin
 
 ## Status
 
-**Phase 1 — Hand tracking:** pose-derived hand ROIs + LiteRT hand landmarks on overlay; HUD shows pose and hands latency.
+**Phase 2 — First gesture:** Korean finger heart unlocks a floating heart burst in the 3D stage.
 
 See [SPEC.md](./SPEC.md) for the product contract and [PROGRESS.md](./PROGRESS.md) for the phased build tracker.
 

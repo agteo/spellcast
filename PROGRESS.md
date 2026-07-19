@@ -4,7 +4,7 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 
 **Repo:** https://github.com/agteo/spellcast (public)  
 **Last updated:** 2026-07-19  
-**Current phase:** 1 — Hand tracking (finishing) → next: 2 — First gesture E2E
+**Current phase:** 2 — First gesture E2E (finishing) → next: 3 — Strange circle
 
 ## Status legend
 
@@ -30,9 +30,10 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 
 ### Phase 2 — First gesture E2E
 
-- [ ] `src/gestures/` registry (hysteresis + cooldown)
-- [ ] Finger heart recognizer
-- [ ] Hearts effect via `src/effects/`
+- [x] `src/gestures/` registry (hysteresis + cooldown)
+- [x] Finger heart recognizer
+- [x] Hearts effect via `src/effects/`
+- [ ] Confirm in Chrome: finger heart → heart burst + toast
 
 ### Phase 3 — Strange circle
 
@@ -73,6 +74,7 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 - Package name set to `spellcast` (`0.1.0`); base scripts (`dev` / `build` / Wasm copy) unchanged.
 - Shipped BlazePose + Hand Landmark `.tflite` and character `.glb` files are intentionally tracked.
 - Hand ROIs from pose wrist/index/pinky (no palm detector); CPU backend alternates one hand per frame.
+- Finger heart: tip proximity + curled middle/ring/pinky; 4-frame enter hysteresis, ~1.6s cooldown; hearts spawn in Three.js stage mapped from camera-space hand position.
 
 ## Blockers
 
