@@ -104,12 +104,12 @@ function sweepDegrees(points, cx, cy) {
 /**
  * @returns {null | { gesture, confidence, hand, position, radius, _enter, _instant, _cooldown }}
  */
-export function update(_pose, hands, dt = 1 / 60) {
-  if (!hands?.length) {
-    trails.clear();
-    return null;
-  }
+// Frames a tracked hand may briefly drop out (CPU frame stride, ROI flicker)
+// before its trail is abandoned.
+const DROPOUT_GRACE_FRAMES = 4;
 
+export function update(_pose, hands, dt = 1 / 60) {
+  hands = hands || [];
   const activeHands = new Set();
   let fired = null;
 
@@ -117,16 +117,20 @@ export function update(_pose, hands, dt = 1 / 60) {
     const key = hand.handedness || hand.side || 'Unknown';
     activeHands.add(key);
     const pose = twoFingerPose(hand.landmarks);
-    if (!pose || !pose.tight) {
+    // Hysteresis: a trail STARTS only when the tips are tight (enter
+    // threshold) but CONTINUES as long as twoFingerPose passes the looser
+    // exit threshold — natural finger wobble mid-circle must not kill it.
+    if (!pose) {
       trails.delete(key);
       continue;
     }
-
     let trail = trails.get(key);
     if (!trail) {
-      trail = { points: [], t: 0 };
+      if (!pose.tight) continue; // not started yet — wait for a tight pinch
+      trail = { points: [], t: 0, miss: 0 };
       trails.set(key, trail);
     }
+    trail.miss = 0;
     trail.t += dt;
 
     const last = trail.points[trail.points.length - 1];
@@ -161,8 +165,12 @@ export function update(_pose, hands, dt = 1 / 60) {
     break;
   }
 
-  for (const key of trails.keys()) {
-    if (!activeHands.has(key)) trails.delete(key);
+  // A hand can vanish for a frame or two (CPU stride, ROI flicker) without
+  // the person stopping their circle — keep the trail through short gaps.
+  for (const [key, trail] of trails) {
+    if (activeHands.has(key)) continue;
+    trail.miss += 1;
+    if (trail.miss > DROPOUT_GRACE_FRAMES) trails.delete(key);
   }
 
   return fired;

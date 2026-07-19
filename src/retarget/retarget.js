@@ -88,6 +88,10 @@ const BONE_RELAX = 2;
 const GROUP_ENGAGE = 0.65;
 const GROUP_DISENGAGE = 0.45;
 
+// Frames of visible face averaged to learn the person's neutral head pitch
+// (the eye-vs-ear-line offset varies per person; see the head basis in 4c).
+const HEAD_PITCH_CALIB_FRAMES = 45;
+
 // Landmarks that identify each leg. Knee + ankle are the honest "is this leg
 // actually in frame" signal — hips stay visible in a face-to-hips framing.
 const LEG_GROUPS = {
@@ -209,6 +213,11 @@ export class Retargeter {
         restWorldQuat: headBone.getWorldQuaternion(Q()),
         restQuat: headBone.quaternion.clone(),
         depth: this.#depth(headBone),
+        // Anatomical neutral-pitch calibration (see 4c): where the eye
+        // landmarks sit relative to the ear line varies per person / model
+        // output, so the level-head pitch is measured, not assumed.
+        neutralPitch: 0,
+        pitchSamples: 0,
       });
     }
 
@@ -376,6 +385,23 @@ export class Retargeter {
             continue;
           }
           forward.normalize();
+          // The eye landmarks do NOT sit exactly level with the ear canals —
+          // how far above varies per person (and per model). Uncorrected,
+          // that offset becomes a permanent head-up/down tilt. Measure the
+          // neutral pitch over the first frames of face tracking (person
+          // assumed to be looking at the screen) and subtract it.
+          const pitch = Math.asin(THREE.MathUtils.clamp(forward.y, -1, 1));
+          if (d.pitchSamples < HEAD_PITCH_CALIB_FRAMES) {
+            d.neutralPitch =
+              (d.neutralPitch * d.pitchSamples + pitch) / (d.pitchSamples + 1);
+            d.pitchSamples += 1;
+          }
+          if (d.neutralPitch) {
+            // Positive rotation about the left axis lowers `forward`, so this
+            // cancels an upward neutral bias (and vice versa). Rotating about
+            // `left` keeps forward ⊥ left.
+            forward.applyQuaternion(Q().setFromAxisAngle(left, d.neutralPitch));
+          }
           const up = new THREE.Vector3().crossVectors(forward, left).normalize();
           const basis = new THREE.Matrix4().makeBasis(left, up, forward);
           liveBasisQuat = Q().setFromRotationMatrix(basis);
@@ -540,7 +566,15 @@ export class Retargeter {
   relax(dt) {
     const alpha = 1 - Math.exp(-4 * dt);
     for (const s of this.segments) s.bone.quaternion.slerp(s.restQuat, alpha);
-    for (const j of this.basisJoints) j.bone.quaternion.slerp(j.restQuat, alpha);
+    for (const j of this.basisJoints) {
+      j.bone.quaternion.slerp(j.restQuat, alpha);
+      // Tracking fully lost → a different person (or framing) may come back;
+      // relearn the neutral head pitch on re-entry.
+      if (j.key === 'head') {
+        j.pitchSamples = 0;
+        j.neutralPitch = 0;
+      }
+    }
     for (const pb of this.positionBones) pb.bone.position.lerp(pb.restPos, alpha);
     // Decay limb-group confidence too, so someone re-entering the frame
     // torso-only doesn't inherit a stale "legs engaged" state.

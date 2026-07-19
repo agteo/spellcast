@@ -199,8 +199,24 @@ function startInferenceLoop() {
 
         // Smooth in the raw (unmirrored) space so the filters see a
         // continuous signal even when the mirror toggle flips.
-        const screen = screenSmoother.apply(result.screen, dt);
+        let screen = screenSmoother.apply(result.screen, dt);
         let world = worldSmoother.apply(result.world, dt);
+
+        // A landmark whose screen position falls outside the camera frame is
+        // an extrapolated guess — and BlazePose sometimes still scores it
+        // visible, which let phantom shoulders/hips/elbows steer the rig and
+        // gestures. Cap its visibility so every consumer (retargeter,
+        // gesture rules, hand ROI) treats it as unreliable. Must happen
+        // BEFORE mirroring: screen and world share indices only in raw space.
+        const m = 0.04;
+        const offscreen = screen.map(
+          (p) => p.x < -m || p.x > 1 + m || p.y < -m || p.y > 1 + m,
+        );
+        const capVis = (p, i) =>
+          offscreen[i] ? { ...p, visibility: Math.min(p.visibility, 0.2) } : p;
+        screen = screen.map(capVis);
+        world = world.map(capVis);
+
         if (state.mirror) world = mirrorLandmarks(world, 0);
 
         // Publish the pose IMMEDIATELY — the retargeter must not wait for

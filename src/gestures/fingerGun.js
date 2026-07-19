@@ -19,23 +19,26 @@ function gunPose(lms) {
   );
 }
 
+// Frames the gun pose may be lost (hand dropout, one misread finger) before
+// the armed state is abandoned — the thumb-drop "fire" is fast, and a single
+// bad frame in the middle of it used to disarm the gun.
+const DROPOUT_GRACE_FRAMES = 6;
+
 export function update(_pose, hands) {
-  if (!hands?.length) {
-    armed.clear();
-    return null;
-  }
+  hands = hands || [];
+  const held = new Set();
+  let fired = null;
 
   for (const hand of hands) {
     const key = hand.handedness || hand.side || 'Unknown';
     const lms = hand.landmarks;
-    if (!lms?.length || !gunPose(lms)) {
-      armed.delete(key);
-      continue;
-    }
+    if (!lms?.length || !gunPose(lms)) continue; // grace pass below decides
+    held.add(key);
 
     const palm = dist2(lms[HAND_LM.WRIST], lms[HAND_LM.MIDDLE_MCP]) || 1e-6;
     const thumbSpread = dist2(lms[HAND_LM.THUMB_TIP], lms[HAND_LM.INDEX_MCP]) / palm;
-    const state = armed.get(key) || { ready: false };
+    const state = armed.get(key) || { ready: false, miss: 0 };
+    state.miss = 0;
 
     if (thumbSpread > T.thumbArmMin) {
       state.ready = true;
@@ -43,12 +46,12 @@ export function update(_pose, hands) {
       continue;
     }
 
-    if (state.ready && thumbSpread < T.thumbFireMax) {
+    if (state.ready && thumbSpread < T.thumbFireMax && !fired) {
       armed.delete(key);
       const indexMcp = lms[HAND_LM.INDEX_MCP];
       const indexTip = lms[HAND_LM.INDEX_TIP];
       const length = dist2(indexMcp, indexTip) || 1e-6;
-      return {
+      fired = {
         gesture: GESTURE_ID,
         confidence: Math.min(1, (0.75 - thumbSpread) / 0.3 + 0.55),
         hand: key,
@@ -61,8 +64,17 @@ export function update(_pose, hands) {
         _instant: true,
         _cooldown: T.cooldown,
       };
+      continue;
     }
     armed.set(key, state);
   }
-  return null;
+
+  // Keep armed state through short dropouts instead of disarming instantly.
+  for (const [key, state] of armed) {
+    if (held.has(key)) continue;
+    state.miss = (state.miss || 0) + 1;
+    if (state.miss > DROPOUT_GRACE_FRAMES) armed.delete(key);
+  }
+
+  return fired;
 }
