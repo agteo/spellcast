@@ -46,7 +46,11 @@ export const GESTURE = {
 };
 
 export const HANDS = {
-  wristVisMin: 0.5,
+  // Candidate gate only — the hand model's own presence score (scoreMin) is
+  // the real filter, so this can sit below the 0.5 overlay/retarget bar:
+  // pose wrist visibility dips during fast motion and a missed candidate
+  // means the hand model never even gets to look.
+  wristVisMin: 0.4,
   scoreMin: 0.55,
   /** Normalized margin — wrists outside this band skip hand infer. */
   frameMargin: 0.03,

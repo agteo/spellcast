@@ -75,6 +75,9 @@ const Q = () => new THREE.Quaternion();
 const ROTATION_SMOOTHING = 12;
 const POSITION_SMOOTHING = 12;
 const VISIBILITY_THRESHOLD = 0.55;
+// Skip bone updates smaller than this (~3.5°) so residual landmark noise after
+// One-Euro filtering doesn't keep twitching an otherwise-still avatar.
+const MICRO_ANGLE = 0.06;
 
 // Rest-return rates (1/seconds). Group relax is deliberate (legs settling
 // into a stance); the per-bone rate is gentler so a landmark briefly dipping
@@ -96,16 +99,19 @@ const HEAD_PITCH_CALIB_FRAMES = 45;
 // landmarks' visibility (EMA + hysteresis). Combine modes:
 //   'avg' — legs: knee and ankle leave the frame together, the average is a
 //           stable signal.
-//   'min' — arms: BlazePose routinely paints a PHANTOM elbow *inside* the
-//           frame with a high visibility score while the real arm hangs out
-//           of view (the wrist, predicted offscreen, gets its visibility
-//           capped upstream). Averaging would let that phantom elbow hold
-//           the arm engaged — the min can't be fooled by one confident guess.
+//   'min' — arms: probe the WRIST alone. BlazePose routinely paints a
+//           phantom elbow *inside* the frame with a high visibility score
+//           while the real arm hangs out of view — the wrist (predicted
+//           offscreen, visibility capped upstream) is the honest signal.
+//           The elbow must NOT be in the probe: raising a hand beside the
+//           face in a chest-up framing drops the elbow below the frame, and
+//           min-ing it in would disengage the arm exactly when the user is
+//           making a gesture with a perfectly visible hand.
 const GROUP_DEFS = {
   leftLeg: { probe: [LM.LEFT_KNEE, LM.LEFT_ANKLE], combine: 'avg' },
   rightLeg: { probe: [LM.RIGHT_KNEE, LM.RIGHT_ANKLE], combine: 'avg' },
-  leftArm: { probe: [LM.LEFT_ELBOW, LM.LEFT_WRIST], combine: 'min' },
-  rightArm: { probe: [LM.RIGHT_ELBOW, LM.RIGHT_WRIST], combine: 'min' },
+  leftArm: { probe: [LM.LEFT_WRIST], combine: 'min' },
+  rightArm: { probe: [LM.RIGHT_WRIST], combine: 'min' },
 };
 // Every landmark that belongs to a group: any driver reading one of these is
 // gated by that group's engaged state.
@@ -331,7 +337,14 @@ export class Retargeter {
     // to its bind stance. Arms get the same treatment (min-combined, see
     // GROUP_DEFS) so a phantom in-frame elbow can't wave a missing arm.
     const gAlpha = 1 - Math.exp(-8 * dt);
-    for (const g of Object.values(this.groups)) {
+    for (const [key, g] of Object.entries(this.groups)) {
+      // Chest-up: legs are never in view — force them disengaged so phantom
+      // in-frame knees/ankles can't keep the lower body twitching.
+      if (this.framing === 'chest' && (key === 'leftLeg' || key === 'rightLeg')) {
+        g.ema = 0;
+        g.active = false;
+        continue;
+      }
       const v =
         g.combine === 'min'
           ? Math.min(...g.landmarks.map((i) => vis[i]))
@@ -489,7 +502,9 @@ export class Retargeter {
         const parentWorld = this.#currentWorldQuat(d.bone.parent, worldQuatCache);
         const targetLocal = parentWorld.clone().invert().multiply(targetWorld);
 
-        d.bone.quaternion.slerp(targetLocal, alpha);
+        if (d.bone.quaternion.angleTo(targetLocal) >= MICRO_ANGLE) {
+          d.bone.quaternion.slerp(targetLocal, alpha);
+        }
         worldQuatCache.set(d.bone, parentWorld.multiply(d.bone.quaternion));
       } else {
         // --- 2 + 3. Segment bone.
@@ -531,7 +546,9 @@ export class Retargeter {
         // ...layered onto the bind rotation → preserves the rig's rest twist.
         const targetLocal = align.multiply(d.restQuat);
 
-        d.bone.quaternion.slerp(targetLocal, alpha);
+        if (d.bone.quaternion.angleTo(targetLocal) >= MICRO_ANGLE) {
+          d.bone.quaternion.slerp(targetLocal, alpha);
+        }
         worldQuatCache.set(d.bone, parentWorld.multiply(d.bone.quaternion));
       }
     }
@@ -573,7 +590,10 @@ export class Retargeter {
           const targetWorld = pb.bindWorldPos.clone().add(delta);
           targetWorld.y = Math.max(targetWorld.y, 0); // never below the floor
           const targetLocal = targetWorld.applyMatrix4(pb.parentInvMatrix);
-          pb.bone.position.lerp(targetLocal, pAlpha);
+          // Same stillness idea as MICRO_ANGLE: ignore sub-centimeter foot jitter.
+          if (pb.bone.position.distanceTo(targetLocal) >= 0.01) {
+            pb.bone.position.lerp(targetLocal, pAlpha);
+          }
         }
       }
     }

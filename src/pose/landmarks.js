@@ -97,3 +97,33 @@ export function extendLandmarks(lms) {
   out[LM.HEAD_CENTER] = mid(lms[LM.LEFT_EAR], lms[LM.RIGHT_EAR]);
   return out;
 }
+
+/**
+ * Replace an unreliable mid-joint (elbow / knee) with a point on the
+ * proximal→distal segment. Used when BlazePose extrapolates a joint out of
+ * frame (visibility capped upstream) but the two endpoints are real — so the
+ * retargeter still has a geometrically honest limb direction instead of a
+ * phantom mid-joint that wanders every frame.
+ *
+ * Mutates `arr` in place. No-ops when the mid-joint already scores visible,
+ * or when either endpoint is too weak to trust.
+ *
+ * @param {Array<{x,y,z,visibility}>} arr
+ * @param {number} proximal  e.g. shoulder / hip
+ * @param {number} mid       e.g. elbow / knee
+ * @param {number} distal    e.g. wrist / ankle
+ * @param {number} [t=0.5]   fraction along proximal→distal
+ * @param {number} [visMin=0.55]
+ */
+export function synthesizeMidJoint(arr, proximal, mid, distal, t = 0.5, visMin = 0.55) {
+  if (arr[mid].visibility >= visMin) return;
+  if (arr[proximal].visibility < visMin || arr[distal].visibility < visMin) return;
+  const a = arr[proximal];
+  const b = arr[distal];
+  arr[mid] = {
+    x: a.x + (b.x - a.x) * t,
+    y: a.y + (b.y - a.y) * t,
+    z: a.z + (b.z - a.z) * t,
+    visibility: Math.min(a.visibility, b.visibility),
+  };
+}

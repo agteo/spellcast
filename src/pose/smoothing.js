@@ -23,11 +23,14 @@ class OneEuro {
    * @param minCutoff Hz — baseline smoothing when still (lower = smoother)
    * @param beta      speed coefficient (higher = less lag when moving fast)
    * @param dCutoff   Hz — cutoff for the derivative estimate
+   * @param deadzone  |deriv| below this holds the last filtered value (kills
+   *                  residual BlazePose jitter when the person is still)
    */
-  constructor(minCutoff = 1.2, beta = 0.05, dCutoff = 1.0) {
+  constructor(minCutoff = 1.2, beta = 0.05, dCutoff = 1.0, deadzone = 0) {
     this.minCutoff = minCutoff;
     this.beta = beta;
     this.dCutoff = dCutoff;
+    this.deadzone = deadzone;
     this.x = new LowPass();
     this.dx = new LowPass();
     this.lastValue = null;
@@ -44,6 +47,11 @@ class OneEuro {
     const rawDeriv = this.lastValue === null ? 0 : (value - this.lastValue) / dt;
     this.lastValue = value;
     const deriv = this.dx.filter(rawDeriv, OneEuro.alpha(this.dCutoff, dt));
+    // Hold still: ignore micro-jitter below the noise floor so a seated /
+    // motionless person doesn't keep twitching the avatar.
+    if (this.deadzone > 0 && this.x.initialized && Math.abs(deriv) < this.deadzone) {
+      return this.x.value;
+    }
     // ...and open the cutoff proportionally to how fast the joint moves.
     const cutoff = this.minCutoff + this.beta * Math.abs(deriv);
     return this.x.filter(value, OneEuro.alpha(cutoff, dt));
@@ -56,10 +64,13 @@ class OneEuro {
  */
 export class LandmarkSmoother {
   constructor(count, opts = {}) {
+    const minCutoff = opts.minCutoff;
+    const beta = opts.beta;
+    const deadzone = opts.deadzone ?? 0;
     this.filters = Array.from({ length: count }, () => ({
-      x: new OneEuro(opts.minCutoff, opts.beta),
-      y: new OneEuro(opts.minCutoff, opts.beta),
-      z: new OneEuro(opts.minCutoff, opts.beta),
+      x: new OneEuro(minCutoff, beta, 1.0, deadzone),
+      y: new OneEuro(minCutoff, beta, 1.0, deadzone),
+      z: new OneEuro(minCutoff, beta, 1.0, deadzone),
     }));
   }
 

@@ -13,7 +13,7 @@
 
 import { PoseDetector } from './pose/detector.js';
 import { LandmarkSmoother } from './pose/smoothing.js';
-import { mirrorLandmarks, extendLandmarks, NUM_LANDMARKS, LM } from './pose/landmarks.js';
+import { mirrorLandmarks, extendLandmarks, NUM_LANDMARKS, LM, synthesizeMidJoint } from './pose/landmarks.js';
 import { HandDetector } from './hands/detector.js';
 import { NUM_HAND_LANDMARKS } from './hands/landmarks.js';
 import { GestureEngine } from './gestures/index.js';
@@ -80,10 +80,12 @@ let clipRecorder = null;
 window.__mocap = state;
 window.__mocap.recorder = recorder;
 // Separate smoothers for the 2D overlay points and the 3D world points.
-const screenSmoother = new LandmarkSmoother(NUM_LANDMARKS, { minCutoff: 1.5, beta: 0.06 });
-const worldSmoother = new LandmarkSmoother(NUM_LANDMARKS, { minCutoff: 1.0, beta: 0.05 });
-const leftHandSmoother = new LandmarkSmoother(NUM_HAND_LANDMARKS, { minCutoff: 1.8, beta: 0.08 });
-const rightHandSmoother = new LandmarkSmoother(NUM_HAND_LANDMARKS, { minCutoff: 1.8, beta: 0.08 });
+// World points get a lower minCutoff + a stillness deadzone so residual
+// BlazePose jitter doesn't keep twitching the avatar when you hold still.
+const screenSmoother = new LandmarkSmoother(NUM_LANDMARKS, { minCutoff: 1.2, beta: 0.05, deadzone: 0.03 });
+const worldSmoother = new LandmarkSmoother(NUM_LANDMARKS, { minCutoff: 0.25, beta: 0.04, deadzone: 0.025 });
+const leftHandSmoother = new LandmarkSmoother(NUM_HAND_LANDMARKS, { minCutoff: 1.5, beta: 0.06, deadzone: 0.03 });
+const rightHandSmoother = new LandmarkSmoother(NUM_HAND_LANDMARKS, { minCutoff: 1.5, beta: 0.06, deadzone: 0.03 });
 
 boot().catch((err) => {
   console.error(err);
@@ -216,6 +218,62 @@ function startInferenceLoop() {
           offscreen[i] ? { ...p, visibility: Math.min(p.visibility, 0.2) } : p;
         screen = screen.map(capVis);
         world = world.map(capVis);
+
+        // Chest-up framing: the camera never sees hips/legs, and resting arms
+        // hang below the frame. BlazePose still paints confident phantom
+        // elbows/wrists/knees in the lower part of the crop — those were
+        // engaging limb groups and twitching the avatar while the user sat
+        // still. Discard lower-body landmarks entirely, and only keep arm
+        // joints that sit near/above the shoulders (raised hands / gestures).
+        if (state.framing === 'chest') {
+          const LOWER = [
+            LM.LEFT_HIP, LM.RIGHT_HIP,
+            LM.LEFT_KNEE, LM.RIGHT_KNEE,
+            LM.LEFT_ANKLE, LM.RIGHT_ANKLE,
+            LM.LEFT_HEEL, LM.RIGHT_HEEL,
+            LM.LEFT_FOOT_INDEX, LM.RIGHT_FOOT_INDEX,
+          ];
+          const kill = (arr, i) => {
+            arr[i] = { ...arr[i], visibility: Math.min(arr[i].visibility, 0.2) };
+          };
+          for (const i of LOWER) {
+            kill(screen, i);
+            kill(world, i);
+          }
+          const shoulderY = Math.min(
+            screen[LM.LEFT_SHOULDER].y,
+            screen[LM.RIGHT_SHOULDER].y,
+          );
+          // MediaPipe y grows downward — anything much below the shoulders
+          // in a chest-up crop is a resting-arm phantom, not a gesture.
+          const armFloor = shoulderY + 0.28;
+          const ARM = [
+            LM.LEFT_ELBOW, LM.RIGHT_ELBOW,
+            LM.LEFT_WRIST, LM.RIGHT_WRIST,
+            LM.LEFT_PINKY, LM.RIGHT_PINKY,
+            LM.LEFT_INDEX, LM.RIGHT_INDEX,
+            LM.LEFT_THUMB, LM.RIGHT_THUMB,
+          ];
+          for (const i of ARM) {
+            if (screen[i].y > armFloor) {
+              kill(screen, i);
+              kill(world, i);
+            }
+          }
+        }
+
+        // When a mid-joint (elbow / knee) was capped but both endpoints are
+        // real, replace it with a point on the proximal→distal segment. That
+        // keeps raised-hand / seated-leg tracking alive without trusting the
+        // model's wandering phantom mid-joint XYZ.
+        for (const arr of [screen, world]) {
+          synthesizeMidJoint(arr, LM.LEFT_SHOULDER, LM.LEFT_ELBOW, LM.LEFT_WRIST);
+          synthesizeMidJoint(arr, LM.RIGHT_SHOULDER, LM.RIGHT_ELBOW, LM.RIGHT_WRIST);
+          if (state.framing !== 'chest') {
+            synthesizeMidJoint(arr, LM.LEFT_HIP, LM.LEFT_KNEE, LM.LEFT_ANKLE);
+            synthesizeMidJoint(arr, LM.RIGHT_HIP, LM.RIGHT_KNEE, LM.RIGHT_ANKLE);
+          }
+        }
 
         if (state.mirror) world = mirrorLandmarks(world, 0);
 

@@ -248,16 +248,27 @@ export class PoseDetector {
 
   /** Tighten the crop around the person, based on this frame's landmarks. */
   #updateRoi(screen, vw, vh) {
-    const cx = ((screen[23].x + screen[24].x) / 2) * vw; // hip center
-    let maxR = 0;
+    // Center on the bounding box of landmarks the model is actually confident
+    // about. Centering on the hip center (what MediaPipe's full pipeline does)
+    // breaks down in a chest-up framing: the hips are extrapolated well BELOW
+    // the frame, so the crop ends up half black padding and the visible person
+    // is squeezed into the top of the model input — wrist/elbow accuracy dies.
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const p of screen) {
       if (p.visibility < 0.5) continue;
-      const dx = p.x * vw - cx;
-      const dy = p.y * vh - ((screen[23].y + screen[24].y) / 2) * vh;
-      maxR = Math.max(maxR, Math.hypot(dx, dy));
+      const x = p.x * vw, y = p.y * vh;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
     }
-    const cy = ((screen[23].y + screen[24].y) / 2) * vh;
-    let size = Math.max(maxR * 2 * 1.25, 0.3 * Math.max(vw, vh)); // pad 25%
+    if (minX > maxX) return; // nothing confidently visible — keep previous ROI
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    let size = Math.max(
+      Math.max(maxX - minX, maxY - minY) * 1.35, // pad 35%
+      0.3 * Math.max(vw, vh)
+    );
     size = Math.min(size, 1.5 * Math.max(vw, vh));
     // Low-pass the ROI so the crop doesn't jump frame to frame.
     const a = 0.35;
