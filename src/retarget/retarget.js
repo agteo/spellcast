@@ -75,9 +75,12 @@ const Q = () => new THREE.Quaternion();
 const ROTATION_SMOOTHING = 12;
 const POSITION_SMOOTHING = 12;
 const VISIBILITY_THRESHOLD = 0.55;
-// Skip bone updates smaller than this (~3.5°) so residual landmark noise after
-// One-Euro filtering doesn't keep twitching an otherwise-still avatar.
-const MICRO_ANGLE = 0.06;
+// Skip tiny bone updates so residual landmark noise doesn't twitch a still
+// avatar. Limbs use a smaller threshold so real motion isn't swallowed.
+const MICRO_ANGLE_TORSO = 0.05; // ~3°
+const MICRO_ANGLE_LIMB = 0.02;  // ~1.1°
+// How much head pitch bleeds into the chest basis in chest-up framing.
+const CHEST_HEAD_PITCH_BLEND = 0.55;
 
 // Rest-return rates (1/seconds). Group relax is deliberate (legs settling
 // into a stance); the per-bone rate is gentler so a landmark briefly dipping
@@ -180,12 +183,19 @@ export class Retargeter {
         bone,
         from: LM[seg.from],
         to: LM[seg.to],
+        // Optional third landmark for limb twist (bend-plane). Arms: wrist or
+        // index; legs: ankle or opposite end of the chain.
+        twistVia: seg.twistVia ? LM[seg.twistVia] : null,
         group: groupOf(LM[seg.from], LM[seg.to]),
         restDir,                              // which way the bone points, in bone space
         restQuat: bone.quaternion.clone(),    // bind-pose local rotation (keeps twist)
         depth: this.#depth(bone),
       });
     }
+
+    // Latest calibrated head pitch (radians) — chest-up framing borrows a
+    // fraction of this so leaning/nodding isn't only on the head bone.
+    this.headPitch = 0;
 
     // --- Basis-driven joints (pelvis, chest): store bind WORLD rotation.
     // At bind the live basis is identity (person upright facing the camera),
@@ -432,28 +442,32 @@ export class Retargeter {
             // `left` keeps forward ⊥ left.
             forward.applyQuaternion(Q().setFromAxisAngle(left, d.neutralPitch));
           }
+          // Publish pitch for chest-up soft lean (forward.y after calib).
+          this.headPitch = Math.asin(THREE.MathUtils.clamp(forward.y, -1, 1));
           const up = new THREE.Vector3().crossVectors(forward, left).normalize();
           const basis = new THREE.Matrix4().makeBasis(left, up, forward);
           liveBasisQuat = Q().setFromRotationMatrix(basis);
         } else if (chestFraming) {
           // --- 4b. Shoulder-only basis (chest-up framing).
-          // Only the shoulder line is trustworthy; the up axis is assumed to
-          // be gravity (person roughly upright — which is all a chest-up
-          // webcam framing can see anyway). Captures yaw (turning) and roll
-          // (leaning sideways); pitch (bowing) is invisible in this framing.
+          // Shoulder line + gravity up, then bleed in a fraction of head pitch
+          // so nodding/leaning forward isn't locked to a rigid upright torso.
           if (vis[d.left] < VISIBILITY_THRESHOLD || vis[d.right] < VISIBILITY_THRESHOLD) {
             d.bone.quaternion.slerp(d.restQuat, boneRelaxAlpha);
             continue;
           }
           const left = pts[d.left].clone().sub(pts[d.right]).normalize();
-          // Shoulders folded near-vertical → yaw/roll are unreadable noise.
           if (Math.abs(left.y) > 0.9) {
             d.bone.quaternion.slerp(d.restQuat, boneRelaxAlpha);
             continue;
           }
-          // Orthogonalize world-up against the shoulder line.
-          const up = new THREE.Vector3(0, 1, 0).addScaledVector(left, -left.y).normalize();
-          const forward = new THREE.Vector3().crossVectors(left, up).normalize();
+          let up = new THREE.Vector3(0, 1, 0).addScaledVector(left, -left.y).normalize();
+          let forward = new THREE.Vector3().crossVectors(left, up).normalize();
+          const pitch = this.headPitch * CHEST_HEAD_PITCH_BLEND;
+          if (Math.abs(pitch) > 0.01) {
+            const pitchQ = Q().setFromAxisAngle(left, pitch);
+            forward.applyQuaternion(pitchQ);
+            up = new THREE.Vector3().crossVectors(forward, left).normalize();
+          }
           const basis = new THREE.Matrix4().makeBasis(left, up, forward);
           liveBasisQuat = Q().setFromRotationMatrix(basis);
         } else {
@@ -462,8 +476,9 @@ export class Retargeter {
           // trustworthy: `up` is NECK−HIP_CENTER, so extrapolated out-of-frame
           // hips poison the pelvis AND chest even when shoulders are visible
           // (face-only framing pitched the whole character face-down). Gate on
-          // all four torso landmarks and RELAX to bind pose instead of
-          // freezing, so a bad frame can't lock the torso in a bent-over pose.
+          // all four torso landmarks AND require hips to sit clearly below the
+          // shoulders in world space (extrapolated hips collapse onto the
+          // chest). RELAX to bind pose instead of freezing.
           const torsoVisible =
             vis[d.left] >= VISIBILITY_THRESHOLD &&
             vis[d.right] >= VISIBILITY_THRESHOLD &&
@@ -471,7 +486,13 @@ export class Retargeter {
             vis[LM.RIGHT_HIP] >= VISIBILITY_THRESHOLD &&
             vis[LM.LEFT_SHOULDER] >= VISIBILITY_THRESHOLD &&
             vis[LM.RIGHT_SHOULDER] >= VISIBILITY_THRESHOLD;
-          if (!torsoVisible) {
+          const hipY =
+            (pts[LM.LEFT_HIP].y + pts[LM.RIGHT_HIP].y) * 0.5;
+          const shoulderY =
+            (pts[LM.LEFT_SHOULDER].y + pts[LM.RIGHT_SHOULDER].y) * 0.5;
+          // Three.js y-up after conversion: standing → shoulders above hips.
+          const hipsBelowShoulders = shoulderY - hipY > 0.12;
+          if (!torsoVisible || !hipsBelowShoulders) {
             d.bone.quaternion.slerp(d.restQuat, boneRelaxAlpha);
             continue;
           }
@@ -502,7 +523,7 @@ export class Retargeter {
         const parentWorld = this.#currentWorldQuat(d.bone.parent, worldQuatCache);
         const targetLocal = parentWorld.clone().invert().multiply(targetWorld);
 
-        if (d.bone.quaternion.angleTo(targetLocal) >= MICRO_ANGLE) {
+        if (d.bone.quaternion.angleTo(targetLocal) >= MICRO_ANGLE_TORSO) {
           d.bone.quaternion.slerp(targetLocal, alpha);
         }
         worldQuatCache.set(d.bone, parentWorld.multiply(d.bone.quaternion));
@@ -537,16 +558,22 @@ export class Retargeter {
 
         // ...expressed in the bone's PARENT space (bones live in parent space).
         const parentWorld = this.#currentWorldQuat(d.bone.parent, worldQuatCache);
-        const dirInParent = targetDir.applyQuaternion(parentWorld.clone().invert());
+        const dirInParent = targetDir.clone().applyQuaternion(parentWorld.clone().invert());
 
         // Where the bone points now if left at bind pose, in parent space:
         const restPointing = d.restDir.clone().applyQuaternion(d.restQuat);
         // Shortest arc from bind direction to live direction...
         const align = Q().setFromUnitVectors(restPointing, dirInParent);
         // ...layered onto the bind rotation → preserves the rig's rest twist.
-        const targetLocal = align.multiply(d.restQuat);
+        let targetLocal = align.multiply(d.restQuat);
+        // Layer live bend-plane twist when a third landmark is available
+        // (wrist for upper arm, index for forearm, ankle for thigh, …).
+        targetLocal = this.#applyLimbTwist(
+          targetLocal, d.restDir, parentWorld, pts, vis,
+          d.from, d.to, d.twistVia, targetDir,
+        );
 
-        if (d.bone.quaternion.angleTo(targetLocal) >= MICRO_ANGLE) {
+        if (d.bone.quaternion.angleTo(targetLocal) >= MICRO_ANGLE_LIMB) {
           d.bone.quaternion.slerp(targetLocal, alpha);
         }
         worldQuatCache.set(d.bone, parentWorld.multiply(d.bone.quaternion));
@@ -634,6 +661,41 @@ export class Retargeter {
     const q = this.#currentWorldQuat(node.parent, cache).multiply(node.quaternion);
     cache.set(node, q);
     return q.clone();
+  }
+
+  /**
+   * After direction-aligning a limb bone, twist it so a bone-local reference
+   * axis lines up with the live bend plane (from→to→twistVia). Without this,
+   * palms/elbow creases stay at bind roll even when the limb points correctly.
+   */
+  #applyLimbTwist(targetLocal, restDir, parentWorld, pts, vis, from, to, via, boneDirWorld) {
+    if (via == null || vis[via] < VISIBILITY_THRESHOLD) return targetLocal;
+    const toVia = pts[via].clone().sub(pts[to]);
+    let bend = new THREE.Vector3().crossVectors(boneDirWorld, toVia);
+    if (bend.lengthSq() < 1e-6) {
+      bend = new THREE.Vector3().crossVectors(boneDirWorld, pts[via].clone().sub(pts[from]));
+    }
+    if (bend.lengthSq() < 1e-6) return targetLocal;
+    bend.normalize();
+
+    const worldQ = parentWorld.clone().multiply(targetLocal);
+    // Stable local axis ⊥ restDir, then to world, then onto the plane ⊥ bone.
+    const refLocal = Math.abs(restDir.dot(new THREE.Vector3(0, 1, 0))) < 0.9
+      ? new THREE.Vector3(0, 1, 0)
+      : new THREE.Vector3(1, 0, 0);
+    refLocal.addScaledVector(restDir, -refLocal.dot(restDir)).normalize();
+    const refWorld = refLocal.applyQuaternion(worldQ);
+    refWorld.addScaledVector(boneDirWorld, -refWorld.dot(boneDirWorld));
+    if (refWorld.lengthSq() < 1e-6) return targetLocal;
+    refWorld.normalize();
+
+    bend.addScaledVector(boneDirWorld, -bend.dot(boneDirWorld));
+    if (bend.lengthSq() < 1e-6) return targetLocal;
+    bend.normalize();
+
+    const twistWorld = Q().setFromUnitVectors(refWorld, bend);
+    const newWorld = twistWorld.multiply(worldQ);
+    return parentWorld.clone().invert().multiply(newWorld);
   }
 
   /**

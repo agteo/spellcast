@@ -58,6 +58,7 @@ export class Stage {
     this.scene.add(shadowPlane);
 
     this.character = null;
+    this.characterAnimations = [];
     this.ghost = null;
     this.loader = new GLTFLoader();
 
@@ -89,6 +90,7 @@ export class Stage {
   async loadCharacter(config) {
     const gltf = await this.loader.loadAsync(config.url);
     const root = gltf.scene;
+    this.characterAnimations = gltf.animations || [];
 
     root.traverse((n) => {
       if (n.isMesh) {
@@ -133,6 +135,7 @@ export class Stage {
   removeCharacter() {
     this.#disposeObject(this.character);
     this.character = null;
+    this.characterAnimations = [];
   }
 
   /**

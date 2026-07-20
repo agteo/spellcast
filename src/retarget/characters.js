@@ -23,9 +23,12 @@
 //               its bind pose (usually its anatomical child)
 //        from/to: landmark names (see LM in pose/landmarks.js) whose world
 //               positions define the live direction this bone should point
+//        twistVia: optional third landmark for bend-plane twist (roll)
 //   positionBones  — bones driven by landmark POSITION rather than rotation.
 //                    Needed for IK-style rigs (RobotExpressive parents its
 //                    feet to the armature root, not to the legs).
+//   anims          — optional map of spell id → GLB animation clip name for
+//                    unlock/fire special moves (AnimationMixer).
 //   materials      — optional per-material-name PBR overrides applied at
 //                    load (color / emissive / roughness / metalness), used
 //                    to give stock glbs a Spellcast look.
@@ -43,6 +46,14 @@ export const CHARACTERS = {
       Grey: { color: 0x1e293b, roughness: 0.5, metalness: 0.7 },
       Black: { color: 0x0b1020, emissive: 0x7c3aed, emissiveIntensity: 0.5 },
     },
+    // RobotExpressive ships with named clips — used for spell unlock flashes.
+    anims: {
+      fingerHeart: 'Wave',
+      strangeCircle: 'Yes',
+      dab: 'Dance',
+      armsV: 'ThumbsUp',
+      fingerGun: 'Punch',
+    },
     pelvis: { bone: 'Hips' },
     chest: { bone: 'Torso' },
     // Full 3D head orientation from face landmarks (ear line + nose).
@@ -53,16 +64,16 @@ export const CHARACTERS = {
       { bone: 'Abdomen', child: 'Torso', from: 'HIP_CENTER', to: 'NECK' },
       // neck lean: shoulder center -> ear center (head itself is basis-driven)
       { bone: 'Neck', child: 'Head', from: 'NECK', to: 'HEAD_CENTER' },
-      // arms
-      { bone: 'UpperArm.L', child: 'LowerArm.L', from: 'LEFT_SHOULDER', to: 'LEFT_ELBOW' },
-      { bone: 'LowerArm.L', child: 'Palm2.L', from: 'LEFT_ELBOW', to: 'LEFT_WRIST' },
-      { bone: 'UpperArm.R', child: 'LowerArm.R', from: 'RIGHT_SHOULDER', to: 'RIGHT_ELBOW' },
-      { bone: 'LowerArm.R', child: 'Palm2.R', from: 'RIGHT_ELBOW', to: 'RIGHT_WRIST' },
-      // legs (feet are handled by positionBones — see note above)
-      { bone: 'UpperLeg.L', child: 'LowerLeg.L', from: 'LEFT_HIP', to: 'LEFT_KNEE' },
-      { bone: 'LowerLeg.L', child: 'LowerLeg.L_end', from: 'LEFT_KNEE', to: 'LEFT_ANKLE' },
-      { bone: 'UpperLeg.R', child: 'LowerLeg.R', from: 'RIGHT_HIP', to: 'RIGHT_KNEE' },
-      { bone: 'LowerLeg.R', child: 'LowerLeg.R_end', from: 'RIGHT_KNEE', to: 'RIGHT_ANKLE' },
+      // arms — twistVia gives palm/elbow-crease roll from the bend plane
+      { bone: 'UpperArm.L', child: 'LowerArm.L', from: 'LEFT_SHOULDER', to: 'LEFT_ELBOW', twistVia: 'LEFT_WRIST' },
+      { bone: 'LowerArm.L', child: 'Palm2.L', from: 'LEFT_ELBOW', to: 'LEFT_WRIST', twistVia: 'LEFT_INDEX' },
+      { bone: 'UpperArm.R', child: 'LowerArm.R', from: 'RIGHT_SHOULDER', to: 'RIGHT_ELBOW', twistVia: 'RIGHT_WRIST' },
+      { bone: 'LowerArm.R', child: 'Palm2.R', from: 'RIGHT_ELBOW', to: 'RIGHT_WRIST', twistVia: 'RIGHT_INDEX' },
+      // legs
+      { bone: 'UpperLeg.L', child: 'LowerLeg.L', from: 'LEFT_HIP', to: 'LEFT_KNEE', twistVia: 'LEFT_ANKLE' },
+      { bone: 'LowerLeg.L', child: 'LowerLeg.L_end', from: 'LEFT_KNEE', to: 'LEFT_ANKLE', twistVia: 'LEFT_FOOT_INDEX' },
+      { bone: 'UpperLeg.R', child: 'LowerLeg.R', from: 'RIGHT_HIP', to: 'RIGHT_KNEE', twistVia: 'RIGHT_ANKLE' },
+      { bone: 'LowerLeg.R', child: 'LowerLeg.R_end', from: 'RIGHT_KNEE', to: 'RIGHT_ANKLE', twistVia: 'RIGHT_FOOT_INDEX' },
     ],
     positionBones: [
       // RobotExpressive is an IK rig: foot bones hang off the armature root.
@@ -85,19 +96,20 @@ export const CHARACTERS = {
       { bone: 'mixamorig:Spine', child: 'mixamorig:Spine1', from: 'HIP_CENTER', to: 'NECK' },
       { bone: 'mixamorig:Spine1', child: 'mixamorig:Spine2', from: 'HIP_CENTER', to: 'NECK' },
       { bone: 'mixamorig:Neck', child: 'mixamorig:Head', from: 'NECK', to: 'HEAD_CENTER' },
-      { bone: 'mixamorig:LeftArm', child: 'mixamorig:LeftForeArm', from: 'LEFT_SHOULDER', to: 'LEFT_ELBOW' },
-      { bone: 'mixamorig:LeftForeArm', child: 'mixamorig:LeftHand', from: 'LEFT_ELBOW', to: 'LEFT_WRIST' },
-      { bone: 'mixamorig:RightArm', child: 'mixamorig:RightForeArm', from: 'RIGHT_SHOULDER', to: 'RIGHT_ELBOW' },
-      { bone: 'mixamorig:RightForeArm', child: 'mixamorig:RightHand', from: 'RIGHT_ELBOW', to: 'RIGHT_WRIST' },
-      { bone: 'mixamorig:LeftUpLeg', child: 'mixamorig:LeftLeg', from: 'LEFT_HIP', to: 'LEFT_KNEE' },
-      { bone: 'mixamorig:LeftLeg', child: 'mixamorig:LeftFoot', from: 'LEFT_KNEE', to: 'LEFT_ANKLE' },
+      { bone: 'mixamorig:LeftArm', child: 'mixamorig:LeftForeArm', from: 'LEFT_SHOULDER', to: 'LEFT_ELBOW', twistVia: 'LEFT_WRIST' },
+      { bone: 'mixamorig:LeftForeArm', child: 'mixamorig:LeftHand', from: 'LEFT_ELBOW', to: 'LEFT_WRIST', twistVia: 'LEFT_INDEX' },
+      { bone: 'mixamorig:RightArm', child: 'mixamorig:RightForeArm', from: 'RIGHT_SHOULDER', to: 'RIGHT_ELBOW', twistVia: 'RIGHT_WRIST' },
+      { bone: 'mixamorig:RightForeArm', child: 'mixamorig:RightHand', from: 'RIGHT_ELBOW', to: 'RIGHT_WRIST', twistVia: 'RIGHT_INDEX' },
+      { bone: 'mixamorig:LeftUpLeg', child: 'mixamorig:LeftLeg', from: 'LEFT_HIP', to: 'LEFT_KNEE', twistVia: 'LEFT_ANKLE' },
+      { bone: 'mixamorig:LeftLeg', child: 'mixamorig:LeftFoot', from: 'LEFT_KNEE', to: 'LEFT_ANKLE', twistVia: 'LEFT_FOOT_INDEX' },
       { bone: 'mixamorig:LeftFoot', child: 'mixamorig:LeftToeBase', from: 'LEFT_HEEL', to: 'LEFT_FOOT_INDEX' },
-      { bone: 'mixamorig:RightUpLeg', child: 'mixamorig:RightLeg', from: 'RIGHT_HIP', to: 'RIGHT_KNEE' },
-      { bone: 'mixamorig:RightLeg', child: 'mixamorig:RightFoot', from: 'RIGHT_KNEE', to: 'RIGHT_ANKLE' },
+      { bone: 'mixamorig:RightUpLeg', child: 'mixamorig:RightLeg', from: 'RIGHT_HIP', to: 'RIGHT_KNEE', twistVia: 'RIGHT_ANKLE' },
+      { bone: 'mixamorig:RightLeg', child: 'mixamorig:RightFoot', from: 'RIGHT_KNEE', to: 'RIGHT_ANKLE', twistVia: 'RIGHT_FOOT_INDEX' },
       { bone: 'mixamorig:RightFoot', child: 'mixamorig:RightToeBase', from: 'RIGHT_HEEL', to: 'RIGHT_FOOT_INDEX' },
     ],
     positionBones: [],
   },
 };
 
-export const DEFAULT_CHARACTER = 'robot';
+// Human-proportion Mixamo rig maps more cleanly than the stylized robot IK.
+export const DEFAULT_CHARACTER = 'xbot';

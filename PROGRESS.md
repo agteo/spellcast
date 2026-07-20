@@ -3,13 +3,23 @@
 Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 
 **Repo:** https://github.com/agteo/spellcast (public)  
-**Last updated:** 2026-07-19  
-**Current phase:** 8 — Polish (complete)
+**Last updated:** 2026-07-20  
+**Current phase:** Tracking v2 + spell linkage (in progress)
 
 ## Status legend
 
 - `[ ]` not started · `[~]` in progress · `[x]` done · `[-]` deferred
 
+## Post-launch: Tracking v2 + spell linkage
+
+- [x] Limb bend-plane twist (arms/legs `twistVia`)
+- [x] Split One-Euro presets (snappy limbs, heavy hips) + softer micro-freeze
+- [x] Chest-up soft pitch from head; full-mode hips-below-shoulders gate
+- [x] Soften chest-up arm kill (wrist-chain only); X Bot default
+- [x] `GESTURE_BINDINGS` + follow-anchored hearts
+- [x] Unlock/fire `AnimationMixer` clips on Spellbot (`config.anims`)
+- [ ] User-saved gesture → link effect/anim (deferred)
+- [ ] Confirm in Chrome: mapping + spell clips
 ## Phase checklist
 
 ### Phase 0 — Bootstrap

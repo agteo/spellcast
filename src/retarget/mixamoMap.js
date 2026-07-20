@@ -105,14 +105,14 @@ export function configFromMixamoMap(map, meta) {
     { bone: b('neck'), child: b('head'), from: 'NECK', to: 'HEAD_CENTER' },
   ];
   segments.push(
-    { bone: b('leftArm'), child: b('leftForeArm'), from: 'LEFT_SHOULDER', to: 'LEFT_ELBOW' },
-    { bone: b('leftForeArm'), child: b('leftHand'), from: 'LEFT_ELBOW', to: 'LEFT_WRIST' },
-    { bone: b('rightArm'), child: b('rightForeArm'), from: 'RIGHT_SHOULDER', to: 'RIGHT_ELBOW' },
-    { bone: b('rightForeArm'), child: b('rightHand'), from: 'RIGHT_ELBOW', to: 'RIGHT_WRIST' },
-    { bone: b('leftUpLeg'), child: b('leftLeg'), from: 'LEFT_HIP', to: 'LEFT_KNEE' },
-    { bone: b('leftLeg'), child: b('leftFoot'), from: 'LEFT_KNEE', to: 'LEFT_ANKLE' },
-    { bone: b('rightUpLeg'), child: b('rightLeg'), from: 'RIGHT_HIP', to: 'RIGHT_KNEE' },
-    { bone: b('rightLeg'), child: b('rightFoot'), from: 'RIGHT_KNEE', to: 'RIGHT_ANKLE' },
+    { bone: b('leftArm'), child: b('leftForeArm'), from: 'LEFT_SHOULDER', to: 'LEFT_ELBOW', twistVia: 'LEFT_WRIST' },
+    { bone: b('leftForeArm'), child: b('leftHand'), from: 'LEFT_ELBOW', to: 'LEFT_WRIST', twistVia: 'LEFT_INDEX' },
+    { bone: b('rightArm'), child: b('rightForeArm'), from: 'RIGHT_SHOULDER', to: 'RIGHT_ELBOW', twistVia: 'RIGHT_WRIST' },
+    { bone: b('rightForeArm'), child: b('rightHand'), from: 'RIGHT_ELBOW', to: 'RIGHT_WRIST', twistVia: 'RIGHT_INDEX' },
+    { bone: b('leftUpLeg'), child: b('leftLeg'), from: 'LEFT_HIP', to: 'LEFT_KNEE', twistVia: 'LEFT_ANKLE' },
+    { bone: b('leftLeg'), child: b('leftFoot'), from: 'LEFT_KNEE', to: 'LEFT_ANKLE', twistVia: 'LEFT_FOOT_INDEX' },
+    { bone: b('rightUpLeg'), child: b('rightLeg'), from: 'RIGHT_HIP', to: 'RIGHT_KNEE', twistVia: 'RIGHT_ANKLE' },
+    { bone: b('rightLeg'), child: b('rightFoot'), from: 'RIGHT_KNEE', to: 'RIGHT_ANKLE', twistVia: 'RIGHT_FOOT_INDEX' },
   );
   if (b('leftToe')) {
     segments.push({ bone: b('leftFoot'), child: b('leftToe'), from: 'LEFT_HEEL', to: 'LEFT_FOOT_INDEX' });

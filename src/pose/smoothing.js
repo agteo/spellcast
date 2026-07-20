@@ -61,17 +61,33 @@ class OneEuro {
 /**
  * Smooths a whole array of {x, y, z, visibility} landmarks —
  * one independent One Euro filter per landmark per axis.
+ *
+ * @param {number} count
+ * @param {{
+ *   minCutoff?: number,
+ *   beta?: number,
+ *   deadzone?: number,
+ *   byIndex?: Record<number, { minCutoff?: number, beta?: number, deadzone?: number }>
+ * }} [opts]  `byIndex` overrides the defaults for specific landmark indices
+ *            (e.g. snappy wrists, heavy hips).
  */
 export class LandmarkSmoother {
   constructor(count, opts = {}) {
-    const minCutoff = opts.minCutoff;
-    const beta = opts.beta;
+    const minCutoff = opts.minCutoff ?? 1.2;
+    const beta = opts.beta ?? 0.05;
     const deadzone = opts.deadzone ?? 0;
-    this.filters = Array.from({ length: count }, () => ({
-      x: new OneEuro(minCutoff, beta, 1.0, deadzone),
-      y: new OneEuro(minCutoff, beta, 1.0, deadzone),
-      z: new OneEuro(minCutoff, beta, 1.0, deadzone),
-    }));
+    const byIndex = opts.byIndex || {};
+    this.filters = Array.from({ length: count }, (_, i) => {
+      const o = byIndex[i] || {};
+      const mc = o.minCutoff ?? minCutoff;
+      const b = o.beta ?? beta;
+      const dz = o.deadzone ?? deadzone;
+      return {
+        x: new OneEuro(mc, b, 1.0, dz),
+        y: new OneEuro(mc, b, 1.0, dz),
+        z: new OneEuro(mc, b, 1.0, dz),
+      };
+    });
   }
 
   apply(landmarks, dt) {

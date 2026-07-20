@@ -13,20 +13,19 @@ npm run dev        # → http://localhost:5173
 
 Use **Chrome** (or another WebGPU browser) for the fast path. Missing WebGPU falls back to CPU (Wasm) automatically.
 
-**Tip:** pick the **Framing** mode that matches your camera: *Chest-up* (default) drives the torso from your shoulders alone — ideal at a desk; *Full torso* uses hips + shoulders for the most faithful leaning and turning, so stand with shoulders-to-hips in frame. Hands need to be visible for hand gestures.
+**Tip:** pick the **Framing** mode that matches your camera: *Chest-up* (default) drives the torso from your shoulders alone — ideal at a desk; *Full torso* uses hips + shoulders for the most faithful leaning and turning, so stand with shoulders-to-hips in frame. Hands need to be visible for hand gestures. Default character is **X Bot** (human Mixamo proportions); switch to Spellbot for stylized clips on unlock.
 
 ## Gestures
 
 | Gesture | How | Effect |
 |---------|-----|--------|
-| Finger heart | Thumb tip meets index tip; other fingers curled | Floating hearts |
+| Finger heart | Thumb tip meets index tip; other fingers curled | Hearts that follow your hand (+ Wave on Spellbot) |
 | Strange circle | Index + middle together; draw a large circle | Sparking portal ring + bloom |
 | Dab | Face into one elbow; other arm extended | Flash + confetti |
 | Arms V | Both wrists above head, arms open | Golden particle rain |
 | Finger gun | Index out, others curled; thumb up then drop | Projectile + trail |
 
-Unlocked gestures light up in the side panel (session-only).
-
+Unlocked gestures light up in the side panel (session-only). Binding table: [`src/gestures/bindings.js`](./src/gestures/bindings.js).
 ## Features
 
 - **Hand tracking** — MediaPipe Hand Landmark via LiteRT.js (ROI from pose wrists; skips offscreen wrists; throttles on CPU)

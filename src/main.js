@@ -18,7 +18,9 @@ import { HandDetector } from './hands/detector.js';
 import { NUM_HAND_LANDMARKS } from './hands/landmarks.js';
 import { GestureEngine } from './gestures/index.js';
 import { UnlockTracker } from './gestures/unlocks.js';
+import { GESTURE_BINDINGS } from './gestures/bindings.js';
 import { EffectsEngine } from './effects/engine.js';
+import { SpellAnimator } from './effects/spellAnim.js';
 import { Retargeter } from './retarget/retarget.js';
 import { CHARACTERS, DEFAULT_CHARACTER } from './retarget/characters.js';
 import { tryBuildMixamoConfig } from './retarget/mixamoMap.js';
@@ -60,6 +62,7 @@ const state = {
   effects: null,
   stage: null,
   retargeter: null,
+  spellAnim: null,
   ghostPlayer: null,
   savedTake: null,
   customObjectUrls: [],
@@ -80,12 +83,43 @@ let clipRecorder = null;
 window.__mocap = state;
 window.__mocap.recorder = recorder;
 // Separate smoothers for the 2D overlay points and the 3D world points.
-// World points get a lower minCutoff + a stillness deadzone so residual
-// BlazePose jitter doesn't keep twitching the avatar when you hold still.
-const screenSmoother = new LandmarkSmoother(NUM_LANDMARKS, { minCutoff: 1.2, beta: 0.05, deadzone: 0.03 });
-const worldSmoother = new LandmarkSmoother(NUM_LANDMARKS, { minCutoff: 0.25, beta: 0.04, deadzone: 0.025 });
-const leftHandSmoother = new LandmarkSmoother(NUM_HAND_LANDMARKS, { minCutoff: 1.5, beta: 0.06, deadzone: 0.03 });
-const rightHandSmoother = new LandmarkSmoother(NUM_HAND_LANDMARKS, { minCutoff: 1.5, beta: 0.06, deadzone: 0.03 });
+// World: heavy on hips/spine (stable torso), snappy on wrists/elbows/face
+// (responsive limbs + head). Stillness deadzones kill residual BlazePose
+// twitch when the person holds still.
+const FACE_SNAPS = {
+  [LM.NOSE]: { minCutoff: 0.8, deadzone: 0.012 },
+  [LM.LEFT_EYE]: { minCutoff: 0.8, deadzone: 0.012 },
+  [LM.RIGHT_EYE]: { minCutoff: 0.8, deadzone: 0.012 },
+  [LM.LEFT_EAR]: { minCutoff: 0.8, deadzone: 0.012 },
+  [LM.RIGHT_EAR]: { minCutoff: 0.8, deadzone: 0.012 },
+};
+const LIMB_SNAPS = {
+  [LM.LEFT_ELBOW]: { minCutoff: 0.9, beta: 0.08, deadzone: 0.012 },
+  [LM.RIGHT_ELBOW]: { minCutoff: 0.9, beta: 0.08, deadzone: 0.012 },
+  [LM.LEFT_WRIST]: { minCutoff: 1.2, beta: 0.1, deadzone: 0.01 },
+  [LM.RIGHT_WRIST]: { minCutoff: 1.2, beta: 0.1, deadzone: 0.01 },
+  [LM.LEFT_INDEX]: { minCutoff: 1.2, beta: 0.1, deadzone: 0.01 },
+  [LM.RIGHT_INDEX]: { minCutoff: 1.2, beta: 0.1, deadzone: 0.01 },
+  [LM.LEFT_KNEE]: { minCutoff: 0.7, beta: 0.06, deadzone: 0.015 },
+  [LM.RIGHT_KNEE]: { minCutoff: 0.7, beta: 0.06, deadzone: 0.015 },
+  [LM.LEFT_ANKLE]: { minCutoff: 0.9, beta: 0.08, deadzone: 0.012 },
+  [LM.RIGHT_ANKLE]: { minCutoff: 0.9, beta: 0.08, deadzone: 0.012 },
+};
+const TORSO_HEAVY = {
+  [LM.LEFT_HIP]: { minCutoff: 0.2, beta: 0.03, deadzone: 0.03 },
+  [LM.RIGHT_HIP]: { minCutoff: 0.2, beta: 0.03, deadzone: 0.03 },
+  [LM.LEFT_SHOULDER]: { minCutoff: 0.35, beta: 0.04, deadzone: 0.02 },
+  [LM.RIGHT_SHOULDER]: { minCutoff: 0.35, beta: 0.04, deadzone: 0.02 },
+};
+const worldByIndex = { ...FACE_SNAPS, ...LIMB_SNAPS, ...TORSO_HEAVY };
+const screenSmoother = new LandmarkSmoother(NUM_LANDMARKS, {
+  minCutoff: 1.2, beta: 0.05, deadzone: 0.025, byIndex: worldByIndex,
+});
+const worldSmoother = new LandmarkSmoother(NUM_LANDMARKS, {
+  minCutoff: 0.35, beta: 0.04, deadzone: 0.02, byIndex: worldByIndex,
+});
+const leftHandSmoother = new LandmarkSmoother(NUM_HAND_LANDMARKS, { minCutoff: 1.5, beta: 0.08, deadzone: 0.02 });
+const rightHandSmoother = new LandmarkSmoother(NUM_HAND_LANDMARKS, { minCutoff: 1.5, beta: 0.08, deadzone: 0.02 });
 
 boot().catch((err) => {
   console.error(err);
@@ -168,8 +202,14 @@ async function compileBackend(backend, firstLoad = false) {
 
 async function loadCharacter(key) {
   const config = CHARACTERS[key];
+  state.spellAnim?.dispose();
   const root = await state.stage.loadCharacter(config);
   state.retargeter = new Retargeter(root, config, { framing: state.framing });
+  state.spellAnim = new SpellAnimator(
+    root,
+    state.stage.characterAnimations,
+    config.anims || {},
+  );
   state.characterKey = key;
 }
 
@@ -244,18 +284,18 @@ function startInferenceLoop() {
             screen[LM.LEFT_SHOULDER].y,
             screen[LM.RIGHT_SHOULDER].y,
           );
-          // MediaPipe y grows downward — anything much below the shoulders
-          // in a chest-up crop is a resting-arm phantom, not a gesture.
-          const armFloor = shoulderY + 0.28;
-          const ARM = [
-            LM.LEFT_ELBOW, LM.RIGHT_ELBOW,
-            LM.LEFT_WRIST, LM.RIGHT_WRIST,
-            LM.LEFT_PINKY, LM.RIGHT_PINKY,
-            LM.LEFT_INDEX, LM.RIGHT_INDEX,
-            LM.LEFT_THUMB, LM.RIGHT_THUMB,
+          // Phantom resting arms: only the WRIST position decides. Killing
+          // elbows independently forced synthesizeMidJoint into a straight
+          // stick whenever a raised hand's elbow dipped below the shoulders.
+          const armFloor = shoulderY + 0.42;
+          const ARM_CHAINS = [
+            [LM.LEFT_WRIST, LM.LEFT_ELBOW, LM.LEFT_PINKY, LM.LEFT_INDEX, LM.LEFT_THUMB],
+            [LM.RIGHT_WRIST, LM.RIGHT_ELBOW, LM.RIGHT_PINKY, LM.RIGHT_INDEX, LM.RIGHT_THUMB],
           ];
-          for (const i of ARM) {
-            if (screen[i].y > armFloor) {
+          for (const chain of ARM_CHAINS) {
+            const wrist = chain[0];
+            if (screen[wrist].y <= armFloor) continue;
+            for (const i of chain) {
               kill(screen, i);
               kill(world, i);
             }
@@ -313,11 +353,13 @@ function startInferenceLoop() {
           if (state.latest === frame) frame.hands = hands;
         }
 
-        // Gesture → effects (finger heart, …).
+        // Gesture → effects + optional special-move clip (bindings table).
         if (state.gestures && state.effects) {
           const events = state.gestures.update(screen, hands, dt);
           for (const ev of events) {
             state.effects.spawn(ev);
+            const binding = GESTURE_BINDINGS[ev.gesture];
+            if (binding?.anim) state.spellAnim?.play(ev.gesture);
             const firstUnlock = unlockTracker.unlock(ev.gesture);
             const messages = {
               fingerHeart: '♥ Finger heart!',
@@ -404,8 +446,14 @@ function startRenderLoop() {
     const staleMs = Math.min(2000, Math.max(500, state.inferCycleMs * 3));
     const fresh = state.latest && now - state.latest.receivedAt < staleMs;
     if (state.retargeter) {
-      if (fresh) state.retargeter.update(state.latest.worldExtended, dt);
-      else state.retargeter.relax(dt); // tracking lost → ease back to rest pose
+      // Special-move clips temporarily own the rig — skip retarget while busy.
+      if (state.spellAnim?.blocking) {
+        /* clip driving bones */
+      } else if (fresh) {
+        state.retargeter.update(state.latest.worldExtended, dt);
+      } else {
+        state.retargeter.relax(dt); // tracking lost → ease back to rest pose
+      }
       hud.setTracking(fresh ? state.retargeter.trackingMode : '–');
     }
 
@@ -423,8 +471,10 @@ function startRenderLoop() {
     }
 
     state.ghostPlayer?.update(dt);
+    state.spellAnim?.update(dt);
 
     if (state.effects) {
+      state.effects.setFrame(fresh ? state.latest : null);
       state.effects.update(dt);
       state.effects.render();
     } else {
