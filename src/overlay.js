@@ -12,12 +12,12 @@ export class Overlay {
     this.ctx = canvas.getContext('2d');
   }
 
-  // The video uses object-fit: cover, so we mimic that mapping: scale the
-  // video frame up to fill the element and crop the overflow equally.
-  #coverTransform() {
+  // The video uses object-fit: contain so the preview shows the entire camera
+  // frame. Match its letterboxed transform exactly.
+  #videoTransform() {
     const cw = this.canvas.width, ch = this.canvas.height;
     const vw = this.video.videoWidth, vh = this.video.videoHeight;
-    const scale = Math.max(cw / vw, ch / vh);
+    const scale = Math.min(cw / vw, ch / vh);
     return {
       sx: vw * scale,
       sy: vh * scale,
@@ -40,7 +40,7 @@ export class Overlay {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (!screenLandmarks && (!hands || !hands.length)) return;
 
-    const t = this.#coverTransform();
+    const t = this.#videoTransform();
     const px = (p) => ({ x: t.ox + p.x * t.sx, y: t.oy + p.y * t.sy });
 
     if (screenLandmarks) {

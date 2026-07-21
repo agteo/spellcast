@@ -121,7 +121,13 @@ export function update(_pose, hands, dt = 1 / 60) {
     // threshold) but CONTINUES as long as twoFingerPose passes the looser
     // exit threshold — natural finger wobble mid-circle must not kill it.
     if (!pose) {
-      trails.delete(key);
+      // A present hand can still have one finger misread for a frame. Treat it
+      // like detector dropout instead of destroying an otherwise good trail.
+      const trail = trails.get(key);
+      if (trail) {
+        trail.miss += 1;
+        if (trail.miss > DROPOUT_GRACE_FRAMES) trails.delete(key);
+      }
       continue;
     }
     let trail = trails.get(key);

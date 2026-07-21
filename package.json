@@ -7,6 +7,7 @@
     "setup-wasm": "node scripts/copy-wasm.mjs",
     "predev": "npm run setup-wasm",
     "prebuild": "npm run setup-wasm",
+    "test": "node --test",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"

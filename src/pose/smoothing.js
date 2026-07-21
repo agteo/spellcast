@@ -73,11 +73,18 @@ class OneEuro {
  */
 export class LandmarkSmoother {
   constructor(count, opts = {}) {
+    this.count = count;
+    this.opts = opts;
+    this.#buildFilters();
+  }
+
+  #buildFilters() {
+    const opts = this.opts;
     const minCutoff = opts.minCutoff ?? 1.2;
     const beta = opts.beta ?? 0.05;
     const deadzone = opts.deadzone ?? 0;
     const byIndex = opts.byIndex || {};
-    this.filters = Array.from({ length: count }, (_, i) => {
+    this.filters = Array.from({ length: this.count }, (_, i) => {
       const o = byIndex[i] || {};
       const mc = o.minCutoff ?? minCutoff;
       const b = o.beta ?? beta;
@@ -90,11 +97,17 @@ export class LandmarkSmoother {
     });
   }
 
+  /** Forget prior coordinates after a real tracking gap / subject change. */
+  reset() {
+    this.#buildFilters();
+  }
+
   apply(landmarks, dt) {
     return landmarks.map((p, i) => {
       const f = this.filters[i];
       if (!f) return p;
       return {
+        ...p,
         x: f.x.filter(p.x, dt),
         y: f.y.filter(p.y, dt),
         z: f.z.filter(p.z, dt),

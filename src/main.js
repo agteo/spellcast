@@ -120,6 +120,7 @@ const worldSmoother = new LandmarkSmoother(NUM_LANDMARKS, {
 });
 const leftHandSmoother = new LandmarkSmoother(NUM_HAND_LANDMARKS, { minCutoff: 1.5, beta: 0.08, deadzone: 0.02 });
 const rightHandSmoother = new LandmarkSmoother(NUM_HAND_LANDMARKS, { minCutoff: 1.5, beta: 0.08, deadzone: 0.02 });
+const smoothedHandsBySide = new Map();
 
 boot().catch((err) => {
   console.error(err);
@@ -222,6 +223,7 @@ function startInferenceLoop() {
   (async () => {
     let lastT = performance.now();
     let lastPublish = 0;
+    let poseSmoothingReady = false;
     while (true) {
       await nextFrame();
       if (state.busy || !state.detector.model) continue;
@@ -235,10 +237,21 @@ function startInferenceLoop() {
         if (!result) {
           hud.tickHandsInference(0);
           const lostMs = Math.max(600, state.inferCycleMs * 2);
-          if (state.latest && now - state.latest.receivedAt > lostMs) state.latest = null;
+          if (state.latest && now - state.latest.receivedAt > lostMs) {
+            state.latest = null;
+            poseSmoothingReady = false;
+          }
           continue;
         }
 
+        // A reacquired subject should not be blended from the last location of
+        // the previous track. Keeping One-Euro history through a genuine gap
+        // made wrists and hands take several frames to re-enter the picture.
+        if (!poseSmoothingReady) {
+          screenSmoother.reset();
+          worldSmoother.reset();
+          poseSmoothingReady = true;
+        }
         // Smooth in the raw (unmirrored) space so the filters see a
         // continuous signal even when the mirror toggle flips.
         let screen = screenSmoother.apply(result.screen, dt);
@@ -281,17 +294,17 @@ function startInferenceLoop() {
           // Only discard arms glued to the bottom of the frame. A wrist that
           // is clearly closer to the camera than its shoulder is a real
           // forward reach (foreshortened) — never treat that as a phantom.
-          const PHANTOM_ARM_Y = 0.78;
+          const PHANTOM_ARM_Y = 0.92;
           const ARM_CHAINS = [
             {
               wrist: LM.LEFT_WRIST,
               shoulder: LM.LEFT_SHOULDER,
-              joints: [LM.LEFT_WRIST, LM.LEFT_ELBOW, LM.LEFT_PINKY, LM.LEFT_INDEX, LM.LEFT_THUMB],
+              joints: [LM.LEFT_WRIST, LM.LEFT_PINKY, LM.LEFT_INDEX, LM.LEFT_THUMB],
             },
             {
               wrist: LM.RIGHT_WRIST,
               shoulder: LM.RIGHT_SHOULDER,
-              joints: [LM.RIGHT_WRIST, LM.RIGHT_ELBOW, LM.RIGHT_PINKY, LM.RIGHT_INDEX, LM.RIGHT_THUMB],
+              joints: [LM.RIGHT_WRIST, LM.RIGHT_PINKY, LM.RIGHT_INDEX, LM.RIGHT_THUMB],
             },
           ];
           for (const chain of ARM_CHAINS) {
@@ -307,6 +320,12 @@ function startInferenceLoop() {
             }
           }
         }
+
+        // Gesture rules need the measured elbow geometry. The retargeting
+        // fallback below may synthesize an occluded elbow into a straight
+        // shoulder→wrist midpoint; feeding that to the dab recognizer erased
+        // the very elbow crook it is looking for.
+        const gestureScreen = screen.map((p) => ({ ...p }));
 
         // When a mid-joint (elbow / knee) was capped but both endpoints are
         // real, replace it with a point on the proximal→distal segment. That
@@ -351,9 +370,22 @@ function startInferenceLoop() {
           hud.tickHandsInference(handResult.inferMs);
           hands = handResult.hands.map((h) => {
             const smoother = h.side === 'Left' ? leftHandSmoother : rightHandSmoother;
+            const previous = smoothedHandsBySide.get(h.side);
+            if (h.fresh === false && previous) {
+              return { ...h, landmarks: previous.landmarks };
+            }
+
+            const measuredAt = h.measuredAt ?? performance.now();
+            const gapMs = previous ? measuredAt - previous.measuredAt : 0;
+            if (!previous || gapMs > 600) smoother.reset();
+            const handDt = previous
+              ? Math.min(Math.max(gapMs / 1000, 1 / 120), 0.25)
+              : dt;
+            const landmarks = smoother.apply(h.landmarks, handDt);
+            smoothedHandsBySide.set(h.side, { landmarks, measuredAt });
             return {
               ...h,
-              landmarks: smoother.apply(h.landmarks, dt),
+              landmarks,
             };
           });
           if (state.latest === frame) frame.hands = hands;
@@ -361,7 +393,7 @@ function startInferenceLoop() {
 
         // Gesture → effects + optional special-move clip (bindings table).
         if (state.gestures && state.effects) {
-          const events = state.gestures.update(screen, hands, dt);
+          const events = state.gestures.update(gestureScreen, hands, dt);
           for (const ev of events) {
             state.effects.spawn(ev);
             const binding = GESTURE_BINDINGS[ev.gesture];

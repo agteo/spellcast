@@ -4,7 +4,7 @@
 // Uses MediaPipe Hand Landmark (full) .tflite. Palm detection is skipped:
 // each hand crop comes from BlazePose wrist + index/pinky tips (Holistic-style).
 // Up to two inferences per frame; low-visibility / offscreen wrists are skipped.
-// On CPU: at most one hand per infer frame, and every-other-frame inference.
+// On CPU: at most one hand per pose cycle; two visible hands alternate.
 // ---------------------------------------------------------------------------
 
 import { loadAndCompile, Tensor } from '@litertjs/core';
@@ -116,7 +116,7 @@ export class HandDetector {
       return { hands: [], inferMs: 0 };
     }
 
-    // Spec risk: CPU hand infer is expensive — every-other-frame + ≤1 hand.
+    // CPU hand infer is expensive — cap work to one hand per pose cycle.
     if (this.backend === 'wasm') {
       if (this._frame % HANDS.cpuFrameStride !== 0) {
         this.lastInferMs = 0;
@@ -158,6 +158,8 @@ export class HandDetector {
         handednessScore,
         landmarks,
         side: c.side,
+        fresh: true,
+        measuredAt: performance.now(),
       };
       hands.push(hand);
       this._lastBySide.set(c.side, hand);
@@ -178,14 +180,15 @@ export class HandDetector {
   #cachedHands(candidates) {
     return candidates
       .map((c) => this._lastBySide.get(c.side))
-      .filter(Boolean);
+      .filter(Boolean)
+      .map((h) => ({ ...h, fresh: false }));
   }
 
   #mergeWithCache(fresh, candidates) {
     const bySide = new Map(fresh.map((h) => [h.side, h]));
     for (const c of candidates) {
       if (!bySide.has(c.side) && this._lastBySide.has(c.side)) {
-        bySide.set(c.side, this._lastBySide.get(c.side));
+        bySide.set(c.side, { ...this._lastBySide.get(c.side), fresh: false });
       }
     }
     return [...bySide.values()];
@@ -201,12 +204,14 @@ export class HandDetector {
       {
         side: 'Left',
         wrist: pose[LM.LEFT_WRIST],
+        elbow: pose[LM.LEFT_ELBOW],
         index: pose[LM.LEFT_INDEX],
         pinky: pose[LM.LEFT_PINKY],
       },
       {
         side: 'Right',
         wrist: pose[LM.RIGHT_WRIST],
+        elbow: pose[LM.RIGHT_ELBOW],
         index: pose[LM.RIGHT_INDEX],
         pinky: pose[LM.RIGHT_PINKY],
       },
@@ -228,22 +233,42 @@ export class HandDetector {
   #roiFromPose(c, vw, vh) {
     const wx = c.wrist.x * vw, wy = c.wrist.y * vh;
     let cx = wx, cy = wy, angle = 0, palm = 0;
+    let axisX = 0, axisY = -1;
     if (!c.wristOnly && c.index && c.pinky) {
       const ix = c.index.x * vw, iy = c.index.y * vh;
       const px = c.pinky.x * vw, py = c.pinky.y * vh;
       const midX = (ix + px) / 2;
       const midY = (iy + py) / 2;
-      cx = (wx + midX) / 2;
-      cy = (wy + midY) / 2;
+      // Pose's index/pinky points are near the distal hand, so their midpoint
+      // gives both a center shift toward the fingers and a stable long axis.
+      cx = wx + (midX - wx) * 0.52;
+      cy = wy + (midY - wy) * 0.52;
       const dx = midX - wx;
       const dy = midY - wy;
-      angle = Math.atan2(dy, dx);
+      axisX = dx;
+      axisY = dy;
       palm = Math.hypot(dx, dy);
+    } else if (c.elbow?.visibility >= HANDS.wristVisMin * 0.5) {
+      // When fingertips collapse under foreshortening, continue the forearm
+      // direction through the wrist as a useful hand-orientation prior.
+      axisX = wx - c.elbow.x * vw;
+      axisY = wy - c.elbow.y * vh;
     }
     // Foreshortened / wrist-only: palm length collapses — use a larger
     // default crop so the hand model still sees the whole hand.
     const minFrac = c.wristOnly || palm < Math.min(vw, vh) * 0.04 ? 0.22 : 0.14;
-    const size = Math.max(palm * 3.0, Math.min(vw, vh) * minFrac);
+    const size = Math.max(palm * 2.4, Math.min(vw, vh) * minFrac);
+
+    const axisLength = Math.hypot(axisX, axisY);
+    if (axisLength > 1e-3) {
+      // The hand-landmark model is trained on crops whose wrist→middle-finger
+      // axis is aligned with the crop Y axis, not the X axis.
+      angle = Math.atan2(axisY, axisX) - Math.PI / 2;
+      if (c.wristOnly) {
+        cx += (axisX / axisLength) * size * 0.18;
+        cy += (axisY / axisLength) * size * 0.18;
+      }
+    }
     return { cx, cy, size, angle };
   }
 

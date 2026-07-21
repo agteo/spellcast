@@ -22,7 +22,6 @@ export function update(pose) {
   const required = [
     LM.NOSE,
     LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER,
-    LM.LEFT_ELBOW, LM.RIGHT_ELBOW,
     LM.LEFT_WRIST, LM.RIGHT_WRIST,
   ];
   if (required.some((i) => !pose[i] || pose[i].visibility < 0.55)) return null;
@@ -47,6 +46,13 @@ export function update(pose) {
 
   let best = null;
   for (const side of sides) {
+    // The face-side elbow is commonly partially occluded by the head in the
+    // pose we are explicitly trying to recognize. Accept a weaker elbow there
+    // while keeping the extended arm's elbow at normal tracking confidence.
+    if (
+      pose[side.faceElbow].visibility < 0.3 ||
+      pose[side.farElbow].visibility < 0.55
+    ) continue;
     const faceDistance = dist2(pose[LM.NOSE], pose[side.faceElbow]) / shoulderWidth;
     const extension = straightness(pose, side.farShoulder, side.farElbow, side.farWrist);
     const farWrist = pose[side.farWrist];

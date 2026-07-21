@@ -153,7 +153,14 @@ export class PoseDetector {
         x: (roi.cx - roi.size / 2 + px * roi.size) / vw,
         y: (roi.cy - roi.size / 2 + py * roi.size) / vh,
         z: (raw[i * 5 + 2] / this.inputW) * (roi.size / vw),
-        visibility: sigmoid(raw[i * 5 + 3]),
+        // BlazePose emits both visibility and per-landmark presence logits.
+        // Trust the weaker one: a joint that is nominally "visible" but not
+        // actually present in the crop is an extrapolation, not a usable
+        // tracking point.
+        visibility: Math.min(
+          sigmoid(raw[i * 5 + 3]),
+          sigmoid(raw[i * 5 + 4]),
+        ),
       });
     }
 
@@ -254,28 +261,66 @@ export class PoseDetector {
     // the frame, so the crop ends up half black padding and the visible person
     // is squeezed into the top of the model input — wrist/elbow accuracy dies.
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const inFrame = (p) =>
+      p.x >= -0.03 && p.x <= 1.03 && p.y >= -0.03 && p.y <= 1.03;
     for (const p of screen) {
-      if (p.visibility < 0.5) continue;
+      // Do this inside the detector. The app-level offscreen cap happens only
+      // after detect() returns, which is too late to stop a hallucinated joint
+      // from dragging the next crop away from the person.
+      if (p.visibility < 0.5 || !inFrame(p)) continue;
       const x = p.x * vw, y = p.y * vh;
       if (x < minX) minX = x;
       if (x > maxX) maxX = x;
       if (y < minY) minY = y;
       if (y > maxY) maxY = y;
     }
-    if (minX > maxX) return; // nothing confidently visible — keep previous ROI
+    if (minX > maxX) {
+      // No trustworthy landmarks: gently reopen the crop rather than keeping
+      // a bad tight ROI forever. A full reset still happens on pose-score loss.
+      const full = this.#fullFrameRoi(vw, vh);
+      this.roi = {
+        cx: this.roi.cx + (full.cx - this.roi.cx) * 0.2,
+        cy: this.roi.cy + (full.cy - this.roi.cy) * 0.2,
+        size: this.roi.size + (full.size - this.roi.size) * 0.25,
+      };
+      return;
+    }
     const cx = (minX + maxX) / 2;
     const cy = (minY + maxY) / 2;
+    const maxDim = Math.max(vw, vh);
+
+    // Shoulder width is a much better predictor of the space the arms can
+    // occupy than the current visible-point box. Keeping roughly two shoulder
+    // widths of reach on either side prevents a torso-only crop from locking
+    // out a fast dab / V pose before the wrists can be rediscovered.
+    const leftShoulder = screen[11];
+    const rightShoulder = screen[12];
+    const shoulderSpan =
+      leftShoulder?.visibility >= 0.45 &&
+      rightShoulder?.visibility >= 0.45 &&
+      inFrame(leftShoulder) &&
+      inFrame(rightShoulder)
+        ? Math.hypot(
+            (leftShoulder.x - rightShoulder.x) * vw,
+            (leftShoulder.y - rightShoulder.y) * vh,
+          )
+        : 0;
     let size = Math.max(
-      Math.max(maxX - minX, maxY - minY) * 1.35, // pad 35%
-      0.3 * Math.max(vw, vh)
+      Math.max(maxX - minX, maxY - minY) * 1.55,
+      shoulderSpan * 4,
+      0.45 * maxDim,
     );
-    size = Math.min(size, 1.5 * Math.max(vw, vh));
-    // Low-pass the ROI so the crop doesn't jump frame to frame.
-    const a = 0.35;
+    size = Math.min(size, 1.5 * maxDim);
+
+    // Expand quickly to catch motion, but contract slowly. Symmetric smoothing
+    // let a few torso-only frames erase the reach margin much faster than an
+    // arm could be reacquired.
+    const centerA = 0.25;
+    const sizeA = size > this.roi.size ? 0.55 : 0.08;
     this.roi = {
-      cx: this.roi.cx + (cx - this.roi.cx) * a,
-      cy: this.roi.cy + (cy - this.roi.cy) * a,
-      size: this.roi.size + (size - this.roi.size) * a,
+      cx: this.roi.cx + (cx - this.roi.cx) * centerA,
+      cy: this.roi.cy + (cy - this.roi.cy) * centerA,
+      size: this.roi.size + (size - this.roi.size) * sizeA,
     };
   }
 

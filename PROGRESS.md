@@ -3,7 +3,7 @@
 Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 
 **Repo:** https://github.com/agteo/spellcast (public)  
-**Last updated:** 2026-07-20  
+**Last updated:** 2026-07-21
 **Current phase:** Tracking v2 + spell linkage (in progress)
 
 ## Status legend
@@ -18,6 +18,9 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 - [x] Soften chest-up arm kill (wrist-chain only); X Bot default
 - [x] `GESTURE_BINDINGS` + follow-anchored hearts
 - [x] Unlock/fire `AnimationMixer` clips on Spellbot (`config.anims`)
+- [x] Upper-limb/gesture reliability: reach-aware pose ROI, aligned hand ROI,
+      split upper-arm/forearm gating, gesture rearming + dropout fixes
+- [x] Node regression tests for gesture hysteresis and smoother reset
 - [ ] User-saved gesture → link effect/anim (deferred)
 - [ ] Confirm in Chrome: mapping + spell clips
 ## Phase checklist
@@ -78,7 +81,7 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 ### Phase 8 — Polish
 
 - [x] Centralize thresholds in `src/gestures/thresholds.js`
-- [x] Skip offscreen wrists; CPU every-other-frame + ≤1 hand/infer with cache merge
+- [x] Skip offscreen wrists; CPU ≤1 hand/pose cycle with cache merge
 - [x] Public README: gestures table, features, tunables tip
 
 ## Public-repo hygiene (do not commit)
@@ -91,10 +94,13 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 ## Notes / decisions
 
 - Vendored from https://github.com/andrisgauracs/LiteRT.js-Mocap (see ATTRIBUTION.md).
-- Hand ROIs from pose wrist/index/pinky; CPU alternates one hand/frame + stride-2; offscreen wrists skip infer.
+- Hand ROIs from pose wrist/index/pinky, aligned to the landmark model's Y axis;
+  CPU alternates one hand per pose cycle; offscreen wrists skip infer.
 - Tunables live in `src/gestures/thresholds.js`.
 - Ghost / custom GLB / share features are local-only (no backend).
 - Head is now basis-driven from FACE landmarks (ear line + eye-midpoint forward) — follows head yaw/pitch/roll even in face-only framing. Chest-up framing also relaxes hip-dependent spine segments (extrapolated hips sometimes pass the visibility gate and used to bend the torso).
+- Gesture recognizers see *pre-synthesis* landmarks (`gestureScreen`) so dab still gets a real elbow crook; retarget may synthesize mid-joints separately.
+- Webcam + overlay use `object-fit: contain` so skeleton dots stay aligned with the video (cover was cropping the mapping).
 
 ## Blockers
 

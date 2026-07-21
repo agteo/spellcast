@@ -123,8 +123,8 @@ button.clipping {
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
 }
+#video { object-fit: contain; background: #05070a; }
 /* Mirror the webcam like a real mirror — toggled from JS via .mirrored */
 #video.mirrored, #overlay.mirrored { transform: scaleX(-1); }
 

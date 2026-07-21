@@ -27,6 +27,7 @@ export class GestureEngine {
     this.enterFrames = opts.enterFrames ?? GESTURE.enterFrames;
     this.exitFrames = opts.exitFrames ?? GESTURE.exitFrames;
     this.cooldownSec = opts.cooldownSec ?? GESTURE.cooldownSec;
+    this.recognizers = opts.recognizers ?? RECOGNIZERS;
     /** @type {Map<string, { hits: number, misses: number, active: boolean, coolUntil: number }>} */
     this.state = new Map();
     this.time = 0;
@@ -53,7 +54,7 @@ export class GestureEngine {
     const events = [];
     const seen = new Set();
 
-    for (const rec of RECOGNIZERS) {
+    for (const rec of this.recognizers) {
       const raw = rec.update(pose, hands, dt);
       if (!raw) continue;
 
@@ -61,18 +62,22 @@ export class GestureEngine {
       seen.add(key);
       const slot = this.#slot(key);
 
-      if (this.time < slot.coolUntil) {
-        slot.hits = 0;
-        continue;
-      }
-
       const entering = raw._enter !== undefined ? raw._enter : raw.confidence >= 0.55;
       if (entering) {
-        slot.hits += 1;
         slot.misses = 0;
+        if (this.time < slot.coolUntil) {
+          slot.hits = 0;
+          continue;
+        }
+        slot.hits += 1;
       } else {
         slot.misses += 1;
         slot.hits = 0;
+        // A recognizer can remain present inside its looser exit band while no
+        // longer satisfying the enter threshold. Such frames must be allowed
+        // to rearm the slot; previously `seen` prevented the pass below from
+        // ever clearing `active`.
+        if (slot.active && slot.misses >= this.exitFrames) slot.active = false;
       }
 
       const needHits = raw._instant ? 1 : this.enterFrames;

@@ -54,6 +54,6 @@ export const HANDS = {
   scoreMin: 0.55,
   /** Normalized margin — wrists outside this band skip hand infer. */
   frameMargin: 0.03,
-  /** On CPU, only run hand infer every N frames. */
-  cpuFrameStride: 2,
+  /** On CPU, run one hand per pose cycle; two hands alternate. */
+  cpuFrameStride: 1,
 };

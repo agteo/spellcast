@@ -102,32 +102,38 @@ const HEAD_PITCH_CALIB_FRAMES = 45;
 // landmarks' visibility (EMA + hysteresis). Combine modes:
 //   'avg' — legs: knee and ankle leave the frame together, the average is a
 //           stable signal.
-//   'min' — arms: probe the WRIST alone. BlazePose routinely paints a
-//           phantom elbow *inside* the frame with a high visibility score
-//           while the real arm hangs out of view — the wrist (predicted
-//           offscreen, visibility capped upstream) is the honest signal.
-//           The elbow must NOT be in the probe: raising a hand beside the
-//           face in a chest-up framing drops the elbow below the frame, and
-//           min-ing it in would disengage the arm exactly when the user is
-//           making a gesture with a perfectly visible hand.
+// Arms are split at the elbow. Losing a wrist should relax the forearm/hand,
+// not erase a still-visible shoulder→elbow segment as the old whole-arm group
+// did. Conversely, a visible wrist can keep the forearm fallback alive without
+// claiming that an occluded upper arm is measured.
 const GROUP_DEFS = {
   leftLeg: { probe: [LM.LEFT_KNEE, LM.LEFT_ANKLE], combine: 'avg' },
   rightLeg: { probe: [LM.RIGHT_KNEE, LM.RIGHT_ANKLE], combine: 'avg' },
-  leftArm: { probe: [LM.LEFT_WRIST], combine: 'min' },
-  rightArm: { probe: [LM.RIGHT_WRIST], combine: 'min' },
+  leftUpperArm: { probe: [LM.LEFT_ELBOW], combine: 'min' },
+  rightUpperArm: { probe: [LM.RIGHT_ELBOW], combine: 'min' },
+  leftForearm: { probe: [LM.LEFT_WRIST], combine: 'min' },
+  rightForearm: { probe: [LM.RIGHT_WRIST], combine: 'min' },
 };
 // Every landmark that belongs to a group: any driver reading one of these is
 // gated by that group's engaged state.
 const GROUP_LANDMARKS = {
   leftLeg: new Set([LM.LEFT_KNEE, LM.LEFT_ANKLE, LM.LEFT_HEEL, LM.LEFT_FOOT_INDEX]),
   rightLeg: new Set([LM.RIGHT_KNEE, LM.RIGHT_ANKLE, LM.RIGHT_HEEL, LM.RIGHT_FOOT_INDEX]),
-  leftArm: new Set([LM.LEFT_ELBOW, LM.LEFT_WRIST, LM.LEFT_PINKY, LM.LEFT_INDEX, LM.LEFT_THUMB]),
-  rightArm: new Set([LM.RIGHT_ELBOW, LM.RIGHT_WRIST, LM.RIGHT_PINKY, LM.RIGHT_INDEX, LM.RIGHT_THUMB]),
+  leftUpperArm: new Set([LM.LEFT_ELBOW]),
+  rightUpperArm: new Set([LM.RIGHT_ELBOW]),
+  leftForearm: new Set([LM.LEFT_WRIST, LM.LEFT_PINKY, LM.LEFT_INDEX, LM.LEFT_THUMB]),
+  rightForearm: new Set([LM.RIGHT_WRIST, LM.RIGHT_PINKY, LM.RIGHT_INDEX, LM.RIGHT_THUMB]),
 };
 
 /** Which limb group (if any) a driver belongs to, from the landmarks it reads. */
 function groupOf(...landmarkIndices) {
+  // Forearm chains include both elbow and wrist; prefer the distal/wrist group
+  // before considering the elbow's upper-arm group.
+  for (const key of ['leftForearm', 'rightForearm']) {
+    if (landmarkIndices.some((i) => GROUP_LANDMARKS[key].has(i))) return key;
+  }
   for (const key of Object.keys(GROUP_LANDMARKS)) {
+    if (key === 'leftForearm' || key === 'rightForearm') continue;
     if (landmarkIndices.some((i) => GROUP_LANDMARKS[key].has(i))) return key;
   }
   return null;
