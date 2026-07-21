@@ -211,28 +211,39 @@ export class HandDetector {
         pinky: pose[LM.RIGHT_PINKY],
       },
     ];
-    return sides.filter((s) =>
-      s.wrist?.visibility >= HANDS.wristVisMin &&
-      s.index?.visibility >= HANDS.wristVisMin * 0.5 &&
-      s.pinky?.visibility >= HANDS.wristVisMin * 0.5 &&
-      this.#inFrame(s.wrist)
-    ).sort((a, b) => b.wrist.visibility - a.wrist.visibility);
+    // Wrist-only fallback: when the hand is foreshortened toward the camera,
+    // pose index/pinky tips often drop visibility even though the wrist is
+    // solid — still run the hand model on a wrist-centered crop.
+    return sides.filter((s) => {
+      if (!s.wrist || s.wrist.visibility < HANDS.wristVisMin) return false;
+      if (!this.#inFrame(s.wrist)) return false;
+      const tipMin = HANDS.wristVisMin * 0.5;
+      s.wristOnly =
+        !(s.index?.visibility >= tipMin && s.pinky?.visibility >= tipMin);
+      return true;
+    }).sort((a, b) => b.wrist.visibility - a.wrist.visibility);
   }
 
   /** Axis-aligned-ish palm box with rotation from wrist → knuckle midline. */
   #roiFromPose(c, vw, vh) {
     const wx = c.wrist.x * vw, wy = c.wrist.y * vh;
-    const ix = c.index.x * vw, iy = c.index.y * vh;
-    const px = c.pinky.x * vw, py = c.pinky.y * vh;
-    const midX = (ix + px) / 2;
-    const midY = (iy + py) / 2;
-    const cx = (wx + midX) / 2;
-    const cy = (wy + midY) / 2;
-    const dx = midX - wx;
-    const dy = midY - wy;
-    const angle = Math.atan2(dy, dx);
-    const palm = Math.hypot(dx, dy) || Math.min(vw, vh) * 0.05;
-    const size = Math.max(palm * 3.0, Math.min(vw, vh) * 0.14);
+    let cx = wx, cy = wy, angle = 0, palm = 0;
+    if (!c.wristOnly && c.index && c.pinky) {
+      const ix = c.index.x * vw, iy = c.index.y * vh;
+      const px = c.pinky.x * vw, py = c.pinky.y * vh;
+      const midX = (ix + px) / 2;
+      const midY = (iy + py) / 2;
+      cx = (wx + midX) / 2;
+      cy = (wy + midY) / 2;
+      const dx = midX - wx;
+      const dy = midY - wy;
+      angle = Math.atan2(dy, dx);
+      palm = Math.hypot(dx, dy);
+    }
+    // Foreshortened / wrist-only: palm length collapses — use a larger
+    // default crop so the hand model still sees the whole hand.
+    const minFrac = c.wristOnly || palm < Math.min(vw, vh) * 0.04 ? 0.22 : 0.14;
+    const size = Math.max(palm * 3.0, Math.min(vw, vh) * minFrac);
     return { cx, cy, size, angle };
   }
 

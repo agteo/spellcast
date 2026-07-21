@@ -259,12 +259,10 @@ function startInferenceLoop() {
         screen = screen.map(capVis);
         world = world.map(capVis);
 
-        // Chest-up framing: the camera never sees hips/legs, and resting arms
-        // hang below the frame. BlazePose still paints confident phantom
-        // elbows/wrists/knees in the lower part of the crop — those were
-        // engaging limb groups and twitching the avatar while the user sat
-        // still. Discard lower-body landmarks entirely, and only keep arm
-        // joints that sit near/above the shoulders (raised hands / gestures).
+        // Chest-up framing: the camera never sees hips/legs, and resting-arm
+        // phantoms are painted along the BOTTOM edge of the crop. Real arms
+        // held in front of the chest (toward the camera) sit mid-frame — even
+        // when below the shoulders — and must not be killed.
         if (state.framing === 'chest') {
           const LOWER = [
             LM.LEFT_HIP, LM.RIGHT_HIP,
@@ -280,22 +278,30 @@ function startInferenceLoop() {
             kill(screen, i);
             kill(world, i);
           }
-          const shoulderY = Math.min(
-            screen[LM.LEFT_SHOULDER].y,
-            screen[LM.RIGHT_SHOULDER].y,
-          );
-          // Phantom resting arms: only the WRIST position decides. Killing
-          // elbows independently forced synthesizeMidJoint into a straight
-          // stick whenever a raised hand's elbow dipped below the shoulders.
-          const armFloor = shoulderY + 0.42;
+          // Only discard arms glued to the bottom of the frame. A wrist that
+          // is clearly closer to the camera than its shoulder is a real
+          // forward reach (foreshortened) — never treat that as a phantom.
+          const PHANTOM_ARM_Y = 0.78;
           const ARM_CHAINS = [
-            [LM.LEFT_WRIST, LM.LEFT_ELBOW, LM.LEFT_PINKY, LM.LEFT_INDEX, LM.LEFT_THUMB],
-            [LM.RIGHT_WRIST, LM.RIGHT_ELBOW, LM.RIGHT_PINKY, LM.RIGHT_INDEX, LM.RIGHT_THUMB],
+            {
+              wrist: LM.LEFT_WRIST,
+              shoulder: LM.LEFT_SHOULDER,
+              joints: [LM.LEFT_WRIST, LM.LEFT_ELBOW, LM.LEFT_PINKY, LM.LEFT_INDEX, LM.LEFT_THUMB],
+            },
+            {
+              wrist: LM.RIGHT_WRIST,
+              shoulder: LM.RIGHT_SHOULDER,
+              joints: [LM.RIGHT_WRIST, LM.RIGHT_ELBOW, LM.RIGHT_PINKY, LM.RIGHT_INDEX, LM.RIGHT_THUMB],
+            },
           ];
           for (const chain of ARM_CHAINS) {
-            const wrist = chain[0];
-            if (screen[wrist].y <= armFloor) continue;
-            for (const i of chain) {
+            const w = screen[chain.wrist];
+            if (w.y <= PHANTOM_ARM_Y) continue;
+            // MediaPipe world z: more negative ≈ closer to the camera.
+            const closerToCamera =
+              world[chain.wrist].z - world[chain.shoulder].z < -0.06;
+            if (closerToCamera) continue;
+            for (const i of chain.joints) {
               kill(screen, i);
               kill(world, i);
             }
