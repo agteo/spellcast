@@ -52,8 +52,15 @@ export const HANDS = {
   // means the hand model never even gets to look.
   wristVisMin: 0.4,
   scoreMin: 0.55,
+  /** Presence floor when the crop was enlarged for a near-camera hand. */
+  scoreMinNear: 0.45,
   /** Normalized margin — wrists outside this band skip hand infer. */
   frameMargin: 0.03,
+  /**
+   * Soft outer band: wrists here still get a clamped ROI (close hands often
+   * clip the frame edge without actually leaving the camera).
+   */
+  frameSoftMargin: -0.02,
   /** On CPU, run one hand per pose cycle; two hands alternate. */
   cpuFrameStride: 1,
 };

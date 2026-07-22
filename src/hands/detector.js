@@ -140,7 +140,10 @@ export class HandDetector {
 
       const rawPresence = outputs.presence[0];
       const presence = rawPresence >= 0 && rawPresence <= 1 ? rawPresence : sigmoid(rawPresence);
-      if (presence < HANDS.scoreMin) {
+      // Near-camera crops are larger / partial — accept a slightly softer
+      // presence score so a choppy edge clip doesn't wipe the hand.
+      const scoreFloor = roi.near ? HANDS.scoreMinNear : HANDS.scoreMin;
+      if (presence < scoreFloor) {
         this._lastBySide.delete(c.side);
         continue;
       }
@@ -199,12 +202,21 @@ export class HandDetector {
     return p.x >= m && p.x <= 1 - m && p.y >= m && p.y <= 1 - m;
   }
 
+  /** True if the wrist is still usable (hard in-frame OR soft edge band). */
+  #wristReachable(p) {
+    if (this.#inFrame(p)) return 'in';
+    const s = HANDS.frameSoftMargin;
+    if (p.x >= s && p.x <= 1 - s && p.y >= s && p.y <= 1 - s) return 'soft';
+    return null;
+  }
+
   #candidatesFromPose(pose) {
     const sides = [
       {
         side: 'Left',
         wrist: pose[LM.LEFT_WRIST],
         elbow: pose[LM.LEFT_ELBOW],
+        shoulder: pose[LM.LEFT_SHOULDER],
         index: pose[LM.LEFT_INDEX],
         pinky: pose[LM.LEFT_PINKY],
       },
@@ -212,6 +224,7 @@ export class HandDetector {
         side: 'Right',
         wrist: pose[LM.RIGHT_WRIST],
         elbow: pose[LM.RIGHT_ELBOW],
+        shoulder: pose[LM.RIGHT_SHOULDER],
         index: pose[LM.RIGHT_INDEX],
         pinky: pose[LM.RIGHT_PINKY],
       },
@@ -221,10 +234,20 @@ export class HandDetector {
     // solid — still run the hand model on a wrist-centered crop.
     return sides.filter((s) => {
       if (!s.wrist || s.wrist.visibility < HANDS.wristVisMin) return false;
-      if (!this.#inFrame(s.wrist)) return false;
+      const reach = this.#wristReachable(s.wrist);
+      if (!reach) return false;
+      s.edgeSoft = reach === 'soft';
       const tipMin = HANDS.wristVisMin * 0.5;
       s.wristOnly =
         !(s.index?.visibility >= tipMin && s.pinky?.visibility >= tipMin);
+      // MediaPipe world/screen z: more negative ≈ closer to the camera.
+      // Prefer elbow as the depth anchor; fall back to shoulder.
+      const anchor =
+        s.elbow?.visibility >= HANDS.wristVisMin * 0.5 ? s.elbow : s.shoulder;
+      s.nearDepth =
+        !!anchor && Number.isFinite(s.wrist.z) && Number.isFinite(anchor.z)
+          ? Math.max(0, anchor.z - s.wrist.z)
+          : 0;
       return true;
     }).sort((a, b) => b.wrist.visibility - a.wrist.visibility);
   }
@@ -254,9 +277,14 @@ export class HandDetector {
       axisX = wx - c.elbow.x * vw;
       axisY = wy - c.elbow.y * vh;
     }
-    // Foreshortened / wrist-only: palm length collapses — use a larger
-    // default crop so the hand model still sees the whole hand.
-    const minFrac = c.wristOnly || palm < Math.min(vw, vh) * 0.04 ? 0.22 : 0.14;
+    // Near-camera hands fill much more of the frame than pose palm length
+    // suggests (tips foreshorten). Scale the floor crop by depth so the
+    // landmark model still sees the whole hand.
+    const nearT = Math.min(1, Math.max(0, (c.nearDepth - 0.04) / 0.22));
+    const near = nearT > 0.15 || c.edgeSoft;
+    let minFrac = c.wristOnly || palm < Math.min(vw, vh) * 0.04 ? 0.22 : 0.14;
+    minFrac += nearT * 0.32; // up to ~0.46–0.54 of the short frame edge
+    if (c.edgeSoft) minFrac = Math.max(minFrac, 0.32);
     const size = Math.max(palm * 2.4, Math.min(vw, vh) * minFrac);
 
     const axisLength = Math.hypot(axisX, axisY);
@@ -264,12 +292,19 @@ export class HandDetector {
       // The hand-landmark model is trained on crops whose wrist→middle-finger
       // axis is aligned with the crop Y axis, not the X axis.
       angle = Math.atan2(axisY, axisX) - Math.PI / 2;
-      if (c.wristOnly) {
-        cx += (axisX / axisLength) * size * 0.18;
-        cy += (axisY / axisLength) * size * 0.18;
+      const push = (c.wristOnly ? 0.18 : 0) + nearT * 0.12;
+      if (push > 0) {
+        cx += (axisX / axisLength) * size * push;
+        cy += (axisY / axisLength) * size * push;
       }
     }
-    return { cx, cy, size, angle };
+
+    // Keep the crop center inside the frame so edge-clipped hands still work.
+    const half = size * 0.5;
+    cx = Math.min(Math.max(cx, half * 0.15), vw - half * 0.15);
+    cy = Math.min(Math.max(cy, half * 0.15), vh - half * 0.15);
+
+    return { cx, cy, size, angle, near };
   }
 
   #cropToInput(video, roi) {
