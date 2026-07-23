@@ -16,9 +16,18 @@ import { LandmarkSmoother } from './pose/smoothing.js';
 import { mirrorLandmarks, extendLandmarks, NUM_LANDMARKS, LM, synthesizeMidJoint } from './pose/landmarks.js';
 import { HandDetector } from './hands/detector.js';
 import { NUM_HAND_LANDMARKS } from './hands/landmarks.js';
-import { GestureEngine } from './gestures/index.js';
+import { GestureEngine, STOCK_RECOGNIZERS } from './gestures/index.js';
 import { UnlockTracker } from './gestures/unlocks.js';
-import { GESTURE_BINDINGS } from './gestures/bindings.js';
+import { getBinding } from './gestures/bindings.js';
+import {
+  loadCatalog,
+  upsertSpell,
+  deleteSpell,
+  makeSpellId,
+  SPELL_EFFECTS,
+  SPELL_ANIMS,
+} from './gestures/catalog.js';
+import { SpellLibrary } from './gestures/library.js';
 import { EffectsEngine } from './effects/engine.js';
 import { SpellAnimator } from './effects/spellAnim.js';
 import { Retargeter } from './retarget/retarget.js';
@@ -49,6 +58,13 @@ const els = {
   exportBvhBtn: document.getElementById('export-bvh-btn'),
   clipBtn: document.getElementById('clip-btn'),
   shareCardBtn: document.getElementById('share-card-btn'),
+  spellRecordBtn: document.getElementById('spell-record-btn'),
+  spellModal: document.getElementById('spell-modal'),
+  spellName: document.getElementById('spell-name'),
+  spellEffect: document.getElementById('spell-effect'),
+  spellAnim: document.getElementById('spell-anim'),
+  spellSaveBtn: document.getElementById('spell-save-btn'),
+  spellCancelBtn: document.getElementById('spell-cancel-btn'),
   glbInput: document.getElementById('glb-input'),
   dropOverlay: document.getElementById('drop-overlay'),
   recBadge: document.getElementById('rec-badge'),
@@ -78,6 +94,9 @@ const state = {
 const hud = new Hud();
 const recorder = new SessionRecorder();
 const unlockTracker = new UnlockTracker(document.getElementById('unlock-grid'));
+const spellLibrary = new SpellLibrary();
+/** @type {null | { frames: object[], durationSec: number }} */
+let pendingSpellCapture = null;
 let clipRecorder = null;
 // Debug handle (also handy on camera: poke the pipeline from DevTools).
 window.__mocap = state;
@@ -157,9 +176,9 @@ async function boot() {
 
   // 3. Compile pose + hand models and load the character in parallel.
   state.stage = new Stage(els.sceneWrap);
-  state.gestures = new GestureEngine();
   state.effects = new EffectsEngine(state.stage);
   state.effects.setMirror(state.mirror);
+  syncCustomSpells();
   const compilePromise = compileBackend(backend, true);
   const characterPromise = loadCharacter(state.characterKey);
   await Promise.all([compilePromise, characterPromise]);
@@ -174,6 +193,25 @@ async function boot() {
   hideStatus();
   startInferenceLoop();
   startRenderLoop();
+}
+
+/** Rebuild GestureEngine from stock + localStorage custom templates. */
+function syncCustomSpells() {
+  const catalog = loadCatalog();
+  const ids = new Set(catalog.map((s) => s.id));
+  for (const id of [...unlockTracker.items.keys()]) {
+    if (String(id).startsWith('custom_') && !ids.has(id)) {
+      unlockTracker.removeCustom(id);
+    }
+  }
+  spellLibrary.clearSpells();
+  for (const spell of catalog) {
+    spellLibrary.registerSpell(spell);
+    unlockTracker.addCustom(spell);
+  }
+  state.gestures = new GestureEngine({
+    recognizers: [...STOCK_RECOGNIZERS, ...spellLibrary.makeRecognizers()],
+  });
 }
 
 // --------------------------------------------------------------------------
@@ -391,13 +429,21 @@ function startInferenceLoop() {
           if (state.latest === frame) frame.hands = hands;
         }
 
+        // Custom-spell templates sample the same screen pose gestures use.
+        spellLibrary.observe(gestureScreen, dt);
+        updateSpellRecordUi();
+        const capture = spellLibrary.finishRecording();
+        if (capture) openSpellModal(capture);
+
         // Gesture → effects + optional special-move clip (bindings table).
-        if (state.gestures && state.effects) {
+        if (state.gestures && state.effects && !spellLibrary.isRecording) {
           const events = state.gestures.update(gestureScreen, hands, dt);
           for (const ev of events) {
             state.effects.spawn(ev);
-            const binding = GESTURE_BINDINGS[ev.gesture];
-            if (binding?.anim) state.spellAnim?.play(ev.gesture);
+            const binding = getBinding(ev.gesture, ev);
+            if (binding?.anim) {
+              state.spellAnim?.play(ev.gesture, { clip: binding.animClip || null });
+            }
             const firstUnlock = unlockTracker.unlock(ev.gesture);
             const messages = {
               fingerHeart: '♥ Finger heart!',
@@ -406,7 +452,7 @@ function startInferenceLoop() {
               armsV: '☀ Arms V!',
               fingerGun: '⌁ Finger gun!',
             };
-            const message = messages[ev.gesture];
+            const message = messages[ev.gesture] || (ev.label ? `✦ ${ev.label}!` : null);
             if (message) toast(firstUnlock ? `${message} Unlocked` : message, 1600);
           }
         }
@@ -635,12 +681,110 @@ function setupControls() {
     }
   });
 
+  setupSpellControls();
+
   els.glbInput?.addEventListener('change', async () => {
     const file = els.glbInput.files?.[0];
     if (file) await importCustomGlb(file);
     els.glbInput.value = '';
   });
   setupGlbDropTarget();
+}
+
+function setupSpellControls() {
+  for (const effect of SPELL_EFFECTS) {
+    const opt = document.createElement('option');
+    opt.value = effect.id;
+    opt.textContent = effect.label;
+    els.spellEffect.appendChild(opt);
+  }
+  for (const anim of SPELL_ANIMS) {
+    const opt = document.createElement('option');
+    opt.value = anim.id;
+    opt.textContent = anim.label;
+    els.spellAnim.appendChild(opt);
+  }
+
+  unlockTracker.onDeleteCustom = (id) => {
+    deleteSpell(id);
+    syncCustomSpells();
+    toast('Custom spell deleted.', 2000);
+  };
+
+  els.spellRecordBtn.disabled = false;
+  els.spellRecordBtn.addEventListener('click', () => {
+    if (spellLibrary.isRecording) {
+      spellLibrary.cancelRecording();
+      updateSpellRecordUi();
+      toast('Recording cancelled.', 1800);
+      return;
+    }
+    if (!els.spellModal.classList.contains('hidden')) return;
+    pendingSpellCapture = null;
+    spellLibrary.startRecording();
+    updateSpellRecordUi();
+    toast('Hold the pose / move for ~2 seconds…', 2200);
+  });
+
+  els.spellCancelBtn.addEventListener('click', () => closeSpellModal());
+  els.spellSaveBtn.addEventListener('click', () => savePendingSpell());
+  els.spellModal.addEventListener('click', (e) => {
+    if (e.target === els.spellModal) closeSpellModal();
+  });
+}
+
+function updateSpellRecordUi() {
+  const btn = els.spellRecordBtn;
+  if (!btn) return;
+  if (spellLibrary.isRecording) {
+    const p = spellLibrary.recordProgress ?? 0;
+    btn.classList.add('spell-recording');
+    btn.textContent = `Recording ${Math.round(p * 100)}%`;
+  } else {
+    btn.classList.remove('spell-recording');
+    btn.textContent = 'Record spell';
+  }
+}
+
+function openSpellModal(capture) {
+  updateSpellRecordUi();
+  if (capture.tooShort) {
+    toast('Recording too short — try again with a clearer pose.', 3500);
+    return;
+  }
+  pendingSpellCapture = capture;
+  els.spellName.value = '';
+  els.spellEffect.value = SPELL_EFFECTS[0]?.id || 'heartBurst';
+  els.spellAnim.value = '';
+  els.spellModal.classList.remove('hidden');
+  els.spellName.focus();
+}
+
+function closeSpellModal() {
+  pendingSpellCapture = null;
+  els.spellModal.classList.add('hidden');
+}
+
+function savePendingSpell() {
+  if (!pendingSpellCapture) {
+    closeSpellModal();
+    return;
+  }
+  const label = (els.spellName.value || 'My spell').trim().slice(0, 32) || 'My spell';
+  const spell = {
+    id: makeSpellId(label),
+    label,
+    icon: '✦',
+    frames: pendingSpellCapture.frames,
+    durationSec: pendingSpellCapture.durationSec,
+    effect: els.spellEffect.value || 'heartBurst',
+    animClip: els.spellAnim.value || null,
+    createdAt: Date.now(),
+  };
+  upsertSpell(spell);
+  syncCustomSpells();
+  closeSpellModal();
+  toast(`Saved “${label}” — repeat the move to cast.`, 3500);
 }
 
 function setupGlbDropTarget() {

@@ -8,7 +8,7 @@ export const GESTURE_CATALOG = [
 
 const COMBO_WINDOW_MS = 4500;
 
-/** Session-only discovery tracker; no backend or persistent identity. */
+/** Session-only discovery tracker; custom spells can be added/removed. */
 export class UnlockTracker {
   constructor(container) {
     this.container = container;
@@ -17,17 +17,54 @@ export class UnlockTracker {
     this.bestCombo = 0;
     this._combo = 0;
     this._lastFireAt = 0;
+    this._stockCount = GESTURE_CATALOG.length;
     for (const gesture of GESTURE_CATALOG) {
-      const item = document.createElement('div');
-      item.className = 'unlock-item';
-      item.dataset.gesture = gesture.id;
-      item.innerHTML = `
-        <span class="unlock-icon" aria-hidden="true">${gesture.icon}</span>
-        <span class="unlock-label">${gesture.label}</span>
-      `;
-      container.appendChild(item);
-      this.items.set(gesture.id, item);
+      this.#addItem(gesture, { custom: false });
     }
+    this.#updateCount();
+  }
+
+  #addItem(gesture, { custom = false } = {}) {
+    const item = document.createElement('div');
+    item.className = 'unlock-item' + (custom ? ' custom' : '');
+    item.dataset.gesture = gesture.id;
+    item.innerHTML = `
+      <span class="unlock-icon" aria-hidden="true">${gesture.icon || '✦'}</span>
+      <span class="unlock-label">${gesture.label}</span>
+      ${custom ? '<button type="button" class="unlock-delete" title="Delete spell" aria-label="Delete spell">×</button>' : ''}
+    `;
+    this.container.appendChild(item);
+    this.items.set(gesture.id, item);
+    if (custom) {
+      item.querySelector('.unlock-delete')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.onDeleteCustom?.(gesture.id);
+      });
+    }
+    return item;
+  }
+
+  /**
+   * Register a user-saved spell in the panel (starts unlocked).
+   * @param {{ id: string, label: string, icon?: string }} spell
+   */
+  addCustom(spell) {
+    if (this.items.has(spell.id)) return;
+    const item = this.#addItem(
+      { id: spell.id, label: spell.label, icon: spell.icon || '✦' },
+      { custom: true },
+    );
+    this.unlocked.add(spell.id);
+    item.classList.add('unlocked');
+    this.#updateCount();
+  }
+
+  removeCustom(id) {
+    const item = this.items.get(id);
+    if (!item) return;
+    item.remove();
+    this.items.delete(id);
+    this.unlocked.delete(id);
     this.#updateCount();
   }
 
@@ -73,6 +110,6 @@ export class UnlockTracker {
 
   #updateCount() {
     const count = document.getElementById('unlock-count');
-    if (count) count.textContent = `${this.unlocked.size}/${GESTURE_CATALOG.length}`;
+    if (count) count.textContent = `${this.unlocked.size}/${this.items.size}`;
   }
 }

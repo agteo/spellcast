@@ -56,6 +56,7 @@
         <button id="export-bvh-btn" disabled>Export BVH</button>
         <button id="clip-btn" disabled>● Clip</button>
         <button id="share-card-btn" disabled>Share card</button>
+        <button id="spell-record-btn" disabled>Record spell</button>
       </div>
     </header>
 
@@ -105,6 +106,29 @@
     <div id="toast" class="hidden"></div>
     <div id="drop-overlay" class="hidden" aria-hidden="true">
       <div class="drop-card">Drop a Mixamo-style .glb to load</div>
+    </div>
+
+    <div id="spell-modal" class="hidden" role="dialog" aria-labelledby="spell-modal-title">
+      <div class="spell-modal-card">
+        <h2 id="spell-modal-title">Save custom spell</h2>
+        <p class="spell-modal-hint">Name it and pick what fires when you repeat the move.</p>
+        <label class="spell-field">
+          <span>Name</span>
+          <input id="spell-name" type="text" maxlength="32" placeholder="My spell" />
+        </label>
+        <label class="spell-field">
+          <span>Effect</span>
+          <select id="spell-effect"></select>
+        </label>
+        <label class="spell-field">
+          <span>Animation (Spellbot)</span>
+          <select id="spell-anim"></select>
+        </label>
+        <div class="spell-modal-actions">
+          <button type="button" id="spell-cancel-btn">Cancel</button>
+          <button type="button" id="spell-save-btn" class="primary">Save spell</button>
+        </div>
+      </div>
     </div>
 
     <script type="module" src="/src/main.js"></script>

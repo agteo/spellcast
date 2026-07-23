@@ -11,7 +11,7 @@ import { makeHeartMaterials } from './sprites.js';
 import { StrangeRing } from './ring.js';
 import { createEmberBurst } from './particles.js';
 import { ConfettiBurst, GoldenRain, FingerGunShot } from './celebrations.js';
-import { GESTURE_BINDINGS } from '../gestures/bindings.js';
+import { GESTURE_BINDINGS, getBinding } from '../gestures/bindings.js';
 import { LM } from '../pose/landmarks.js';
 
 /**
@@ -190,7 +190,7 @@ export class EffectsEngine {
   }
 
   spawn(event) {
-    const binding = GESTURE_BINDINGS[event?.gesture];
+    const binding = getBinding(event?.gesture, event) || GESTURE_BINDINGS[event?.gesture];
     if (!binding) return;
 
     if (binding.flash) {

@@ -157,7 +157,7 @@ button.clipping {
 #unlock-grid { display: grid; gap: 5px; }
 .unlock-item {
   display: grid;
-  grid-template-columns: 22px 1fr;
+  grid-template-columns: 22px 1fr auto;
   align-items: center;
   gap: 7px;
   color: #475569;
@@ -174,6 +174,18 @@ button.clipping {
   font-size: 13px;
 }
 .unlock-label { font-size: 10px; }
+.unlock-delete {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+.unlock-delete:hover { color: #fb7185; opacity: 1; }
 .unlock-item.unlocked {
   color: #f8fafc;
   opacity: 1;
@@ -184,6 +196,11 @@ button.clipping {
   border-color: #8b5cf6;
   background: rgba(124, 58, 237, 0.22);
   box-shadow: 0 0 12px rgba(139, 92, 246, 0.45);
+}
+.unlock-item.custom.unlocked .unlock-icon {
+  border-color: #14b8a6;
+  background: rgba(20, 184, 166, 0.2);
+  box-shadow: 0 0 12px rgba(45, 212, 191, 0.35);
 }
 
 .effect-flash {
@@ -358,6 +375,73 @@ button.clipping {
 #status-layer.hidden { display: flex !important; }
 #toast.hidden { display: block !important; }
 #framing-hint.hidden { display: block !important; }
+
+#spell-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 7, 10, 0.72);
+}
+#spell-modal.hidden { display: none !important; }
+.spell-modal-card {
+  width: min(360px, 92vw);
+  padding: 22px 22px 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(20, 184, 166, 0.45);
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+}
+.spell-modal-card h2 {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 650;
+}
+.spell-modal-hint {
+  margin: 0 0 16px;
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+.spell-field {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 12px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.spell-field input,
+.spell-field select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: #0b1020;
+  color: var(--text);
+  font-size: 13px;
+}
+.spell-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+.spell-modal-actions button.primary {
+  background: #0f766e;
+  border-color: #14b8a6;
+}
+button.spell-recording {
+  border-color: #14b8a6 !important;
+  color: #5eead4 !important;
+  animation: spell-pulse 1s ease-in-out infinite;
+}
+@keyframes spell-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(20, 184, 166, 0.35); }
+  50% { box-shadow: 0 0 0 6px rgba(20, 184, 166, 0); }
+}
 
 @media (max-width: 900px) {
   #stage { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }

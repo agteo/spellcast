@@ -28,11 +28,14 @@ Use **Chrome** (or another WebGPU browser) for the fast path. Missing WebGPU fal
 
 Unlocked gestures light up in the side panel (session-only). Binding table: [`src/gestures/bindings.js`](./src/gestures/bindings.js).
 
+**Custom spells:** click **Record spell**, hold a pose/move for ~2 seconds, then name it and pick an effect (and optional Spellbot clip). Repeating the move casts it. Saved in `localStorage` only; delete from the unlock panel ×.
+
 ## Features
 
 - **Hand tracking** — MediaPipe Hand Landmark via LiteRT.js (pose-driven ROIs aligned to the model’s Y axis; wrist-only fallback when fingertips foreshorten; CPU runs one hand per pose cycle)
 - **Reach-aware pose ROI** — crop expands with shoulder span and contracts slowly so dab / arms-V wrists aren’t locked out of the next frame
 - **Split arm retarget** — upper arm (elbow) and forearm (wrist) engage independently so losing a hand doesn’t drop a still-visible upper arm
+- **Custom spells** — record a short pose template, bind an effect/anim, match live (localStorage)
 - **Effects** — particles, shader ring, emoji sprites, UnrealBloomPass
 - **Ghost replay** — Record → Save take → toggle Ghost for a translucent twin
 - **Custom characters** — drag-and-drop a Mixamo-style `.glb` (or use Custom .glb)

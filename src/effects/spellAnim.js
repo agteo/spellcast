@@ -35,14 +35,14 @@ export class SpellAnimator {
   /**
    * Play the clip mapped to a gesture id, if present.
    * @param {string} gestureId
-   * @param {{ durationSec?: number }} [opts]
+   * @param {{ durationSec?: number, clip?: string|null }} [opts]
    */
-  play(gestureId, { durationSec = 1.6 } = {}) {
+  play(gestureId, { durationSec = 1.6, clip = null } = {}) {
     if (!this.mixer) return false;
-    const clipName = this.animMap[gestureId];
+    const clipName = clip || this.animMap[gestureId];
     if (!clipName) return false;
-    const clip = this.byName.get(clipName);
-    if (!clip) {
+    const animClip = this.byName.get(clipName);
+    if (!animClip) {
       console.warn(`SpellAnimator: clip "${clipName}" not found for ${gestureId}`);
       return false;
     }
@@ -50,14 +50,14 @@ export class SpellAnimator {
       this.action.fadeOut(0.15);
       this.action = null;
     }
-    const action = this.mixer.clipAction(clip);
+    const action = this.mixer.clipAction(animClip);
     action.reset();
     action.setLoop(THREE.LoopOnce, 1);
     action.clampWhenFinished = true;
     action.fadeIn(0.12);
     action.play();
     this.action = action;
-    this.busyUntil = performance.now() + Math.min(durationSec, clip.duration || durationSec) * 1000;
+    this.busyUntil = performance.now() + Math.min(durationSec, animClip.duration || durationSec) * 1000;
     return true;
   }
 

@@ -3,8 +3,8 @@
 Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 
 **Repo:** https://github.com/agteo/spellcast (public)  
-**Last updated:** 2026-07-21
-**Current phase:** Tracking v2 + spell linkage (in progress)
+**Last updated:** 2026-07-23
+**Current phase:** Phase 9 — user-saved gestures (in progress)
 
 ## Status legend
 
@@ -21,8 +21,8 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 - [x] Upper-limb/gesture reliability: reach-aware pose ROI, aligned hand ROI,
       split upper-arm/forearm gating, gesture rearming + dropout fixes
 - [x] Node regression tests for gesture hysteresis and smoother reset
-- [ ] User-saved gesture → link effect/anim (deferred)
-- [ ] Confirm in Chrome: mapping + spell clips
+- [x] User-saved gesture → link effect/anim (`localStorage`, Record spell UI)
+- [ ] Confirm in Chrome: mapping + spell clips + custom spell record/match
 ## Phase checklist
 
 ### Phase 0 — Bootstrap
@@ -84,6 +84,13 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
 - [x] Skip offscreen wrists; CPU ≤1 hand/pose cycle with cache merge
 - [x] Public README: gestures table, features, tunables tip
 
+### Phase 9 — User-saved gestures
+
+- [x] Record ~2s pose template → localStorage catalog
+- [x] Live template match + effect/anim binding
+- [x] Unlock panel delete for custom spells
+- [ ] Confirm in Chrome: record → save → repeat move → effect fires
+
 ## Public-repo hygiene (do not commit)
 
 - Secrets / `.env*` / API keys
@@ -98,6 +105,8 @@ Living tracker. Update status as work lands. Spec: [SPEC.md](./SPEC.md)
   CPU alternates one hand per pose cycle; offscreen wrists skip infer.
 - Tunables live in `src/gestures/thresholds.js`.
 - Ghost / custom GLB / share features are local-only (no backend).
+- Custom spells persist in `localStorage` (`spellcast.customSpells.v1`); templates
+  are shoulder-normalized joint XY sampled ~18 Hz and matched with a sliding window.
 - Head is now basis-driven from FACE landmarks (ear line + eye-midpoint forward) — follows head yaw/pitch/roll even in face-only framing. Chest-up framing also relaxes hip-dependent spine segments (extrapolated hips sometimes pass the visibility gate and used to bend the torso).
 - Gesture recognizers see *pre-synthesis* landmarks (`gestureScreen`) so dab still gets a real elbow crook; retarget may synthesize mid-joints separately.
 - Webcam + overlay use `object-fit: contain` so skeleton dots stay aligned with the video (cover was cropping the mapping).

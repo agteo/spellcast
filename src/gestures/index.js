@@ -10,6 +10,7 @@ import * as fingerGun from './fingerGun.js';
 import { GESTURE } from './thresholds.js';
 
 const RECOGNIZERS = [fingerHeart, strangeCircle, dab, armsV, fingerGun];
+export const STOCK_RECOGNIZERS = RECOGNIZERS;
 
 /**
  * Tracks enter/exit with hysteresis and enforces cooldowns so a held pose
@@ -86,8 +87,9 @@ export class GestureEngine {
         const cool = raw._cooldown ?? this.cooldownSec;
         slot.coolUntil = this.time + cool;
         slot.hits = 0;
-        const { _enter, _instant, _cooldown, _ratio, ...event } = raw;
-        events.push(event);
+        const { _enter, _instant, _cooldown, _ratio, _binding, ...event } = raw;
+        // Keep `_binding` for custom spells (EffectsEngine / SpellAnimator).
+        events.push(_binding ? { ...event, _binding } : event);
       }
     }
 

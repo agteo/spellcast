@@ -1,13 +1,15 @@
 // Data-driven gesture → effect (+ optional follow anchor / special anim).
-// Adding a new spell: register a recognizer in gestures/index.js AND add a
-// row here — EffectsEngine.spawn no longer needs a hard-coded switch.
+// Adding a new stock spell: register a recognizer AND add a row here.
+// Custom (user-saved) spells resolve through getBinding() / catalog.
+
+import { loadCatalog, bindingFromSpell } from './catalog.js';
 
 export const GESTURE_BINDINGS = {
   fingerHeart: {
     effect: 'heartBurst',
-    anchor: 'hand',   // follow the firing hand while alive
+    anchor: 'hand',
     follow: true,
-    anim: true,       // play character clip from config.anims[gesture]
+    anim: true,
   },
   strangeCircle: {
     effect: 'strangeRing',
@@ -35,3 +37,11 @@ export const GESTURE_BINDINGS = {
     anim: true,
   },
 };
+
+/** Stock binding, custom catalog binding, or event-embedded `_binding`. */
+export function getBinding(gestureId, event = null) {
+  if (event?._binding) return event._binding;
+  if (GESTURE_BINDINGS[gestureId]) return GESTURE_BINDINGS[gestureId];
+  const custom = loadCatalog().find((s) => s.id === gestureId);
+  return custom ? bindingFromSpell(custom) : null;
+}
